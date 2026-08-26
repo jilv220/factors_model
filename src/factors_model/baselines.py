@@ -125,16 +125,17 @@ def validate_baseline(config: BaselineConfig) -> None:
         for key in ("as_of", "factor_as_of", "method_id"):
             if not model.get(key):
                 raise ConfigError(f"{config.path}: model.{key} is required")
-        fixtures = config.data.get("fixtures", {})
-        for key in ("factor_input", "analyst_revisions", "reference_workbook"):
-            if not fixtures.get(key):
-                raise ConfigError(f"{config.path}: fixtures.{key} is required")
-            path = config.project_path(str(fixtures[key]), project_root)
-            if not path.is_file():
-                raise ConfigError(f"six-factor fixture not found: {path}")
-        for key in ("as_of", "factor_as_of", "revision_as_of"):
-            if not fixtures.get(key):
-                raise ConfigError(f"{config.path}: fixtures.{key} is required")
+        fixtures = config.data.get("fixtures")
+        if fixtures is not None:
+            for key in ("factor_input", "analyst_revisions", "reference_workbook"):
+                if not fixtures.get(key):
+                    raise ConfigError(f"{config.path}: fixtures.{key} is required")
+                path = config.project_path(str(fixtures[key]), project_root)
+                if not path.is_file():
+                    raise ConfigError(f"six-factor fixture not found: {path}")
+            for key in ("as_of", "factor_as_of", "revision_as_of"):
+                if not fixtures.get(key):
+                    raise ConfigError(f"{config.path}: fixtures.{key} is required")
         workers = int(config.data.get("execution", {}).get("workers", 4))
         if workers < 1:
             raise ConfigError(f"{config.path}: execution.workers must be at least 1")
@@ -202,11 +203,15 @@ def build_command(config: BaselineConfig, options: dict[str, Any], output_dir: P
         return command
 
     inputs = config.data["inputs"]
-    fixtures = config.data["fixtures"]
+    fixtures = config.data.get("fixtures", {})
     model = config.data["model"]
     execution = config.data.get("execution", {})
     weights = model["weights"]
     frozen = bool(options.get("frozen_baseline"))
+    if frozen and not fixtures:
+        raise ConfigError(
+            f"{config.path}: [fixtures] is required only when using --frozen-baseline"
+        )
     if options.get("universe") and options.get("factor_input"):
         raise ConfigError("--universe and --factor-input are mutually exclusive")
     if frozen:
@@ -318,8 +323,12 @@ def fingerprint_inputs(config: BaselineConfig, options: dict[str, Any]) -> list[
                 if candidate.is_file():
                     paths.append((role, candidate))
     else:
-        fixtures = config.data["fixtures"]
         if options.get("frozen_baseline"):
+            fixtures = config.data.get("fixtures", {})
+            if not fixtures:
+                raise ConfigError(
+                    f"{config.path}: [fixtures] is required only when using --frozen-baseline"
+                )
             paths = [
                 ("five_factor_fixture", config.project_path(str(fixtures["factor_input"]), project_root)),
                 ("analyst_revisions_fixture", config.project_path(str(fixtures["analyst_revisions"]), project_root)),

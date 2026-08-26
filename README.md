@@ -135,6 +135,7 @@ Successful runs write into `runs/<as-of>/<pipeline>/` by default:
 - `regression.json`: comparison with the frozen snapshot when no material baseline inputs or parameters were overridden.
 - `run.log`: command output and errors.
 - `results.json` for both models.
+- `bad_beta_analysis.xlsx` for bad-beta runs, containing only `ticker`, `beta`, `bad_beta`, and `grid_cell`.
 - `rankings.csv`, `five_factor_inputs.json`, and `analyst_revisions.json` for live six-factor ranking.
 
 An existing non-empty run directory is not overwritten unless `--force` is supplied.

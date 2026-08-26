@@ -15,6 +15,7 @@ from .baselines import (
     json_text,
     sha256_file,
 )
+from .excel_reports import write_bad_beta_report
 from .validation import qa_bad_beta, qa_six_factor, verify_baseline
 
 
@@ -124,15 +125,31 @@ def run_baseline(config: BaselineConfig, options: dict[str, Any]) -> dict[str, A
 
     if config.pipeline == "bad_beta":
         primary_output = output_dir / "results.json"
+        excel_report_path = output_dir / "bad_beta_analysis.xlsx"
+        try:
+            excel_report = write_bad_beta_report(primary_output, excel_report_path)
+        except Exception as exc:
+            manifest["status"] = "failed_excel_report"
+            manifest["excel_report_error"] = repr(exc)
+            manifest_path.write_text(json_text(manifest), encoding="utf-8")
+            raise RunError(f"bad_beta completed but Excel report generation failed: {exc}") from exc
         qa = qa_bad_beta(primary_output)
     else:
         primary_output = output_dir / "results.json"
+        excel_report_path = None
+        excel_report = None
         qa = qa_six_factor(primary_output, config.data["model"]["weights"])
     qa_path = output_dir / "qa.json"
     qa_path.write_text(json_text(qa), encoding="utf-8")
     manifest["qa_pass"] = qa["pass"]
     manifest["primary_output"] = str(primary_output)
     manifest["primary_output_sha256"] = sha256_file(primary_output)
+    if excel_report_path is not None and excel_report is not None:
+        manifest["excel_report"] = {
+            **excel_report,
+            "sha256": sha256_file(excel_report_path),
+        }
+    manifest_path.write_text(json_text(manifest), encoding="utf-8")
     regression_path: Path | None = None
     if is_frozen_baseline_run(config, options):
         regression = verify_baseline(config, primary_output)
@@ -161,6 +178,7 @@ def run_baseline(config: BaselineConfig, options: dict[str, Any]) -> dict[str, A
         "manifest": str(manifest_path),
         "qa": str(qa_path),
         "regression": str(regression_path) if regression_path else None,
+        "excel_report": str(excel_report_path) if excel_report_path else None,
     }
 
 

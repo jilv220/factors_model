@@ -93,7 +93,7 @@ def infer_universe_as_of(path, override):
 
 
 def read_universe(path, as_of_override=None):
-    files = sorted(path.glob("decile_*.csv*")) if path.is_dir() else [path]
+    files = sorted(path.glob("*.csv*")) if path.is_dir() else [path]
     if not files:
         raise ValueError(f"no candidate CSVs found under {path}")
     by_ticker = {}

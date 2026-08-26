@@ -3,11 +3,22 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+from xml.etree import ElementTree
 
-from factors_model.baselines import build_command, default_output_dir, load_baseline
+from factors_model.baselines import (
+    ConfigError,
+    build_command,
+    default_output_dir,
+    fingerprint_inputs,
+    load_baseline,
+)
+from factors_model.excel_reports import BAD_BETA_REPORT_COLUMNS, write_bad_beta_report
 from factors_model.fundamentals import load_universe
-from factors_model.runner import is_frozen_baseline_run
+from factors_model.runner import is_frozen_baseline_run, run_baseline
 from factors_model.validation import (
     compare_bad_beta,
     compare_six_factor,
@@ -17,9 +28,43 @@ from factors_model.validation import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SPREADSHEET_NS = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
 
 class BaselineConfigTests(unittest.TestCase):
+    def _write_live_six_factor_config(self, directory: str) -> Path:
+        config_path = Path(directory) / "six_factor_live.toml"
+        config_path.write_text(
+            f'''baseline_version = "six_factor_ranking_test"
+pipeline = "six_factor_ranking"
+project_root = "{REPO_ROOT}"
+python = "{REPO_ROOT / '.venv' / 'bin' / 'python'}"
+script = "{REPO_ROOT / 'scripts' / 'rank_six_factor_model.py'}"
+output_root = "{Path(directory) / 'runs'}"
+
+[inputs]
+universe = "data/universes/2026-06-16"
+
+[model]
+as_of = "2026-08-26"
+factor_as_of = "2026-08-26"
+method_id = "low_beta_low_bad_beta_six_factor_v1"
+
+[model.weights]
+quality = 0.25
+fundamental_momentum = 0.25
+analyst_revisions = 0.16666666666666666
+valuation = 0.1111111111111111
+conservative_investment = 0.1111111111111111
+shareholder_yield = 0.1111111111111111
+
+[regression]
+expected_output = "baselines/six_factor_ranking_v1/results.json"
+''',
+            encoding="utf-8",
+        )
+        return config_path
+
     def test_configs_resolve_code_inputs_and_baselines_inside_repository(self) -> None:
         for name in ("bad_beta_v1.toml", "six_factor_ranking_v1.toml"):
             config = load_baseline(REPO_ROOT / "configs" / name)
@@ -91,6 +136,33 @@ class BaselineConfigTests(unittest.TestCase):
         self.assertEqual(command[command.index("--revision-as-of") + 1], "2026-08-09")
         self.assertTrue(is_frozen_baseline_run(config, {"frozen_baseline": True}))
 
+    def test_six_factor_live_config_does_not_require_fixtures(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = load_baseline(
+                self._write_live_six_factor_config(directory),
+                "six_factor_ranking",
+            )
+            command = build_command(config, {}, Path(directory) / "output")
+            fingerprints = fingerprint_inputs(config, {})
+
+        self.assertIn("--universe", command)
+        self.assertNotIn("--factor-input", command)
+        self.assertTrue(fingerprints)
+        self.assertTrue(all(item["role"] == "universe" for item in fingerprints))
+
+    def test_six_factor_frozen_run_requires_fixtures(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = load_baseline(
+                self._write_live_six_factor_config(directory),
+                "six_factor_ranking",
+            )
+            with self.assertRaisesRegex(ConfigError, r"\[fixtures\].*--frozen-baseline"):
+                build_command(
+                    config,
+                    {"frozen_baseline": True},
+                    Path(directory) / "output",
+                )
+
     def test_six_factor_universe_csv_uses_only_public_identity_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             universe = Path(directory) / "selection.csv"
@@ -112,6 +184,94 @@ class BaselineConfigTests(unittest.TestCase):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_bad_beta_run_writes_excel_artifact_and_manifest(self) -> None:
+        payload = {
+            "universe": [
+                {
+                    "ticker": "AAA",
+                    "status": "OK",
+                    "beta": 0.5,
+                    "bad_beta": 0.2,
+                    "grid_cell": "Low Beta / Low Bad Beta",
+                }
+            ],
+            "breakpoints": {
+                "classified_count": 1,
+                "beta_q1": 0.4,
+                "beta_q2": 0.8,
+                "bad_beta_q1": 0.1,
+                "bad_beta_q2": 0.4,
+            },
+            "cell_summary": [{"grid_cell": "Low Beta / Low Bad Beta", "count": 1}],
+            "yahoo_errors": {},
+        }
+        config = load_baseline(REPO_ROOT / "configs" / "bad_beta_v1.toml", "bad_beta")
+
+        def fake_pipeline(command, **_kwargs):
+            output_path = Path(command[command.index("--output") + 1])
+            output_path.write_text(json.dumps(payload), encoding="utf-8")
+            return SimpleNamespace(returncode=0, stdout="completed", stderr="")
+
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("factors_model.runner.subprocess", SimpleNamespace(run=fake_pipeline)):
+                result = run_baseline(
+                    config,
+                    {
+                        "output_dir": directory,
+                        "as_of": "2026-08-25",
+                    },
+                )
+
+            report_path = Path(result["excel_report"])
+            manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+            self.assertTrue(report_path.is_file())
+            self.assertEqual(manifest["excel_report"]["path"], str(report_path))
+            self.assertEqual(
+                manifest["excel_report"]["columns"],
+                list(BAD_BETA_REPORT_COLUMNS),
+            )
+            self.assertEqual(manifest["excel_report"]["rows"], 1)
+            self.assertEqual(len(manifest["excel_report"]["sha256"]), 64)
+
+    def test_bad_beta_excel_report_contains_only_requested_columns(self) -> None:
+        payload = {
+            "universe": [
+                {
+                    "ticker": "AAA",
+                    "status": "OK",
+                    "beta": 0.5,
+                    "bad_beta": 0.2,
+                    "grid_cell": "Low Beta / Low Bad Beta",
+                    "issue_name": "Alpha",
+                },
+                {
+                    "ticker": "NEW",
+                    "status": "Insufficient return history",
+                },
+            ]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            results_path = Path(directory) / "results.json"
+            report_path = Path(directory) / "bad_beta_analysis.xlsx"
+            results_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            summary = write_bad_beta_report(results_path, report_path)
+
+            self.assertEqual(summary["columns"], list(BAD_BETA_REPORT_COLUMNS))
+            self.assertEqual(summary["rows"], 2)
+            self.assertEqual(summary["complete_rows"], 1)
+            self.assertTrue(report_path.is_file())
+            with zipfile.ZipFile(report_path) as archive:
+                self.assertIsNone(archive.testzip())
+                table = ElementTree.fromstring(archive.read("xl/tables/table1.xml"))
+                columns = table.find("main:tableColumns", SPREADSHEET_NS)
+                self.assertIsNotNone(columns)
+                self.assertEqual(
+                    [column.attrib["name"] for column in columns],
+                    list(BAD_BETA_REPORT_COLUMNS),
+                )
+                self.assertEqual(table.attrib["ref"], "A1:D3")
+
     def test_bad_beta_qa_and_comparison(self) -> None:
         payload = {
             "universe": [
