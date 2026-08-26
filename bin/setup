@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+bootstrap_python=${FACTORS_BOOTSTRAP_PYTHON:-python3}
+project_python="$repo_root/.venv/bin/python"
+
+if [ ! -x "$project_python" ]; then
+  "$bootstrap_python" -m venv --copies "$repo_root/.venv"
+fi
+
+"$project_python" -m pip install -e "$repo_root"
+"$project_python" -c 'import numpy, pandas, yfinance; print("factors runtime ready")'

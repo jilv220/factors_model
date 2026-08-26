@@ -1,0 +1,11 @@
+ticker,full_name,sector,market_cap,composite_percentile,pe_percentile,pb_percentile,ps_percentile,beta
+MSFT,Microsoft Corporation (MSFT),Technology,2969591349248,21.054,6.143,14.692,42.326,0.261423
+ABT,Abbott Laboratories (ABT),Healthcare,154446561280,24.168,24.99,23.439,24.076,0.233943
+AON,Aon PLC (AON),Financial Services,70375743488,22.262,2.008,25.035,39.742,0.518208
+ALC,Alcon AG (ALC),Healthcare,32329633792,14.324,25.983,15.8,1.19,0.33365
+ACGL,Arch Capital Group Ltd. (ACGL),Financial Services,31969148928,21.65,6.183,46.501,12.266,0.91353
+VICI,VICI Properties Inc (VICI),Real Estate,30139076608,21.779,1.739,38.541,25.058,0.197508
+MKL,Markel Corporation (MKL),Financial Services,23201044480,23.158,44.226,4.235,21.014,0.717153
+STE,STERIS plc (STE),Healthcare,20069459968,17.39,0.481,26.024,25.666,0.182332
+AVY,Avery Dennison Corp (AVY),Consumer Cyclical,12224693248,20.616,17.714,3.559,40.577,0.205212
+WTRG,Essential Utilities Inc (WTRG),Utilities,10653255680,16.932,30.756,11.869,8.171,0.202256

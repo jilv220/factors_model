@@ -1,0 +1,14 @@
+ticker,full_name,sector,market_cap,composite_percentile,pe_percentile,pb_percentile,ps_percentile,beta
+PG,Procter & Gamble Company (PG),Consumer Defensive,350361026560,69.907,89.722,55.368,64.632,0.190543
+CB,Chubb Ltd (CB),Financial Services,126810865664,71.405,30.159,89.96,94.095,0.743585
+MCK,McKesson Corporation (MCK),Healthcare,91294883840,64.434,41.81,,87.058,0.337534
+WM,Waste Management Inc (WM),Industrials,87117840384,66.024,66.183,64.155,67.734,0.354335
+SPG,Simon Property Group Inc (SPG),Real Estate,81946402816,70.941,30.756,82.167,99.901,0.13047
+TRV,The Travelers Companies Inc (TRV),Financial Services,65169219584,66.117,6.62,92.306,99.424,0.821139
+COR,Cencora Inc. (COR),Healthcare,54755315712,65.965,63.367,51.209,83.32,0.173049
+YUM,Yum! Brands Inc (YUM),Consumer Cyclical,42630332416,64.831,67.893,,61.769,0.289052
+CINF,Cincinnati Financial Corporation (CINF),Financial Services,26194651136,70.408,35.04,96.004,80.179,0.595955
+EQR,Equity Residential (EQR),Real Estate,25570363392,69.43,66.938,80.378,60.974,0.205073
+CMS,CMS Energy Corporation (CMS),Utilities,22751930368,63.373,64.036,41.61,84.473,0.155598
+ESS,Essex Property Trust Inc (ESS),Real Estate,19395141632,67.535,47.813,97.237,57.555,0.278087
+REG,Regency Centers Corporation (REG),Real Estate,14749169664,65.348,13.459,95.567,87.018,0.251054

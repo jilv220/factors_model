@@ -1,0 +1,15 @@
+ticker,full_name,sector,market_cap,composite_percentile,pe_percentile,pb_percentile,ps_percentile,beta
+TMUS,T-Mobile US Inc (TMUS),Communication Services,204385173504,56.72,17.197,81.213,71.75,0.217515
+MCD,McDonald's Corporation (MCD),Consumer Cyclical,203289935872,56.163,51.909,,60.418,0.197407
+PGR,Progressive Corp (PGR),Financial Services,119419117568,61.186,17.038,99.901,66.62,0.636585
+HCA,"HCA Healthcare, Inc. (HCA)",Healthcare,88054874112,59.722,55.646,,63.797,0.173592
+RELX,Relx PLC ADR (RELX),Industrials,58259628032,57.855,52.903,46.209,74.453,0.257117
+ALL,The Allstate Corporation (ALL),Financial Services,57428033536,59.866,1.705,77.992,99.901,0.645386
+AZO,AutoZone Inc (AZO),Consumer Cyclical,50833600512,62.425,72.624,,52.227,0.278099
+HIG,Hartford Financial Services Group (HIG),Financial Services,35587665920,62.046,16.755,83.917,85.467,0.745081
+CBOE,Cboe Global Markets Inc (CBOE),Financial Services,30654140416,57.913,19.503,76.163,78.072,0.178009
+RGA,Reinsurance Group of America (RGA),Financial Services,13783314432,52.592,50.935,66.249,40.593,0.61487
+GL,Globe Life Inc (GL),Financial Services,12996956160,61.69,38.986,,84.394,0.122084
+CPT,Camden Property Trust (CPT),Real Estate,11246782464,60.842,36.163,87.932,58.429,0.224929
+EGP,EastGroup Properties Inc (EGP),Real Estate,11001007104,62.366,61.491,35.606,90,0.167226
+FRT,Federal Realty Investment Trust (FRT),Real Estate,10839593984,60.987,20.258,84.433,78.27,0.241584

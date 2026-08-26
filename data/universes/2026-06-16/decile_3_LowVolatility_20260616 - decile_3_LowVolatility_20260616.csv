@@ -1,0 +1,20 @@
+ticker,full_name,sector,market_cap,composite_percentile,pe_percentile,pb_percentile,ps_percentile,beta
+MA,Mastercard Inc (MA),Financial Services,433521590272,39.238,10.596,89.523,17.594,0.672661
+SPGI,S&P Global Inc (SPGI),Financial Services,127277039616,29.162,30.278,24.98,32.227,0.550465
+SYK,Stryker Corporation (SYK),Healthcare,119685234688,31.962,33.738,26.66,35.487,0.279107
+IBN,ICICI Bank Limited (IBN),Financial Services,99718447104,34.139,6.819,45.597,50,0.109185
+ADP,Automatic Data Processing Inc (ADP),Technology,89228681216,31.339,4.433,53.101,36.481,0.354604
+MRSH,"Marsh & McLennan Companies, Inc. (MRSH)",,80266969088,29.059,19.264,30.557,37.356,0.529701
+ICE,Intercontinental Exchange Inc (ICE),Financial Services,79228305408,33.777,25.229,49.841,26.262,0.350392
+RACE,Ferrari NV (RACE),Consumer Cyclical,65143791616,32.677,33.062,12.147,52.823,0.109685
+MSCI,MSCI Inc (MSCI),Financial Services,44448919552,36.541,30.239,,42.843,0.254569
+HLN,Haleon plc (HLN),Healthcare,40038875136,26.874,11.038,62.716,6.867,0.28118
+WCN,Waste Connections Inc (WCN),Industrials,39377457152,38.161,13.249,72.624,28.608,0.369303
+PCG,PG&E Corp (PCG),Utilities,36512882688,36.155,10.572,38.032,59.861,0.267435
+PAYX,Paychex Inc (PAYX),Technology,36151549952,28.582,32.505,25.944,27.296,0.340184
+FCNCA,"First Citizens BancShares, Inc. (FCNCA)",Financial Services,23970551808,27.72,38.668,31.511,12.982,0.466047
+CPAY,Corpay Inc (CPAY),Technology,23103477760,39.463,24.871,76.044,17.475,0.195481
+ROL,Rollins Inc (ROL),Consumer Cyclical,22580645888,30.371,9.245,57.078,24.791,0.334006
+NVR,NVR Inc (NVR),Consumer Cyclical,17100014592,35.818,37.117,21.849,48.489,0.189863
+ELS,Equity Lifestyle Properties Inc (ELS),Real Estate,12868651008,34.599,21.889,38.787,43.121,0.262778
+RNR,Renaissancere Holdings Ltd (RNR),Financial Services,12678213632,29.233,11.357,52.704,23.638,0.633489
