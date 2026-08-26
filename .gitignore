@@ -7,3 +7,5 @@ dist/
 *.egg-info/
 runs/
 
+.DS_Store
+

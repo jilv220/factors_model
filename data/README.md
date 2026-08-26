@@ -10,7 +10,10 @@ must treat dated files as immutable; create a new dated snapshot when needed.
 
 ## Bad beta
 
-- `bad_beta/shiller_cape.csv` and `.xls`: local Shiller CAPE source snapshots.
+- `bad_beta/shiller_cape.xls`: local Shiller source workbook updated through
+  2026-08.
+- `bad_beta/shiller_cape.csv`: pipeline-normalized CAPE series derived from the
+  workbook (`Date,CAPE`), with 1,748 monthly observations through 2026-08.
 
 ## Six-factor ranking
 
