@@ -15,9 +15,9 @@ market = "VTI"
 lookback_days = 504
 min_observations = 252
 min_pair_observations = 126
-residual_correlation_threshold = 0.35
+residual_correlation_threshold = 0.3
 cluster_cap = 0.15
-style_factors = ["LGLV"]
+style_factors = ["LGLV", "VYM", "JNK", "IEF"]
 
 [regression]
 expected_output = "baselines/residual_risk_clusters_v1/results.json"
