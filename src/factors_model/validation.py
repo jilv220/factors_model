@@ -157,6 +157,86 @@ def qa_six_factor(path: Path, configured_weights: dict[str, Any]) -> dict[str, A
     }
 
 
+def qa_risk_clusters(path: Path) -> dict[str, Any]:
+    payload = _load_json(path)
+    rows = payload.get("rows") or []
+    eligible = [row for row in rows if str(row.get("status", "")).startswith("OK")]
+    excluded = [row for row in rows if not str(row.get("status", "")).startswith("OK")]
+    summaries = payload.get("cluster_summary") or []
+    correlation = payload.get("residual_correlation") or {}
+    tickers = correlation.get("tickers") or []
+    matrix = correlation.get("matrix") or []
+    overlaps = correlation.get("overlap_matrix") or []
+    size = len(tickers)
+
+    matrix_shape_ok = len(matrix) == size and all(isinstance(row, list) and len(row) == size for row in matrix)
+    overlap_shape_ok = len(overlaps) == size and all(isinstance(row, list) and len(row) == size for row in overlaps)
+    matrix_values = [value for row in matrix for value in row] if matrix_shape_ok else []
+    symmetric = matrix_shape_ok and all(
+        abs(float(matrix[left][right]) - float(matrix[right][left])) <= 1e-10
+        for left in range(size)
+        for right in range(size)
+    )
+    diagonal = matrix_shape_ok and all(abs(float(matrix[index][index]) - 1.0) <= 1e-10 for index in range(size))
+    bounded = matrix_shape_ok and all(_finite(value) and -1.0 - 1e-12 <= float(value) <= 1.0 + 1e-12 for value in matrix_values)
+
+    assignments = {row.get("ticker"): row.get("cluster_id") for row in eligible}
+    summary_by_cluster = {row.get("cluster_id"): row for row in summaries}
+    member_counts_match = True
+    weights_reconcile = True
+    cap_math_matches = True
+    for cluster_id, summary in summary_by_cluster.items():
+        members = [row for row in eligible if row.get("cluster_id") == cluster_id]
+        member_counts_match = member_counts_match and int(summary.get("member_count", -1)) == len(members)
+        complete = all(row.get("portfolio_weight") is not None for row in members)
+        weights_reconcile = weights_reconcile and bool(summary.get("weight_complete")) == complete
+        if complete:
+            gross = sum(abs(float(row["portfolio_weight"])) for row in members)
+            net = sum(float(row["portfolio_weight"]) for row in members)
+            weights_reconcile = weights_reconcile and _finite(summary.get("gross_weight")) and abs(float(summary["gross_weight"]) - gross) <= 1e-12
+            weights_reconcile = weights_reconcile and _finite(summary.get("net_weight")) and abs(float(summary["net_weight"]) - net) <= 1e-12
+            cap = summary.get("cluster_cap")
+            if cap is not None:
+                excess = max(0.0, gross - float(cap))
+                multiplier = min(1.0, float(cap) / gross) if gross else 1.0
+                cap_math_matches = cap_math_matches and abs(float(summary.get("excess_gross") or 0.0) - excess) <= 1e-12
+                cap_math_matches = cap_math_matches and abs(float(summary.get("max_multiplier")) - multiplier) <= 1e-12
+                cap_math_matches = cap_math_matches and bool(summary.get("breach")) == (excess > 1e-12)
+
+    expected_ids = [f"C{index:02d}" for index in range(1, len(summaries) + 1)]
+    checks = {
+        "model_id_matches": payload.get("model_id") == "residual_risk_clusters_v1",
+        "universe_nonempty": len(rows) > 0,
+        "tickers_are_unique": len({row.get("ticker") for row in rows}) == len(rows),
+        "eligible_rows_are_assigned": len(eligible) > 0 and all(bool(value) for value in assignments.values()),
+        "excluded_rows_are_unassigned": all(row.get("cluster_id") is None for row in excluded),
+        "correlation_tickers_match_eligible": sorted(tickers) == sorted(assignments),
+        "correlation_matrix_shape": matrix_shape_ok,
+        "overlap_matrix_shape": overlap_shape_ok,
+        "correlation_matrix_symmetric": symmetric,
+        "correlation_diagonal_is_one": diagonal,
+        "correlations_are_finite_and_bounded": bounded,
+        "cluster_ids_are_sequential": sorted(summary_by_cluster) == expected_ids,
+        "cluster_member_counts_match": member_counts_match,
+        "portfolio_weights_reconcile": weights_reconcile,
+        "cluster_cap_math_matches": cap_math_matches,
+        "no_future_returns": int((payload.get("coverage") or {}).get("future_date_count", -1)) == 0,
+    }
+    return {
+        "pipeline": "residual_risk_clusters",
+        "pass": all(checks.values()),
+        "checks": checks,
+        "metrics": {
+            "universe_rows": len(rows),
+            "eligible_rows": len(eligible),
+            "excluded_rows": len(excluded),
+            "cluster_count": len(summaries),
+            "breach_count": sum(row.get("breach") is True for row in summaries),
+            "correlation_dimension": size,
+        },
+    }
+
+
 def compare_bad_beta(expected_path: Path, actual_path: Path, regression: dict[str, Any]) -> dict[str, Any]:
     expected = _load_json(expected_path)
     actual = _load_json(actual_path)
@@ -275,6 +355,84 @@ def compare_six_factor(expected_path: Path, actual_path: Path, regression: dict[
     }
 
 
+def compare_risk_clusters(expected_path: Path, actual_path: Path, regression: dict[str, Any]) -> dict[str, Any]:
+    expected = _load_json(expected_path)
+    actual = _load_json(actual_path)
+    expected_rows = {row["ticker"]: row for row in expected.get("rows", [])}
+    actual_rows = {row["ticker"]: row for row in actual.get("rows", [])}
+    common = sorted(set(expected_rows) & set(actual_rows))
+    missing = sorted(set(expected_rows) - set(actual_rows))
+    extra = sorted(set(actual_rows) - set(expected_rows))
+    assignment_mismatches: list[str] = []
+    status_mismatches: list[str] = []
+    coefficient_differences: list[float] = []
+    for ticker in common:
+        left, right = expected_rows[ticker], actual_rows[ticker]
+        if left.get("cluster_id") != right.get("cluster_id"):
+            assignment_mismatches.append(ticker)
+        if left.get("status") != right.get("status"):
+            status_mismatches.append(ticker)
+        for field in ("alpha_daily", "beta_market", "beta_sector", "r_squared", "residual_volatility"):
+            expected_value, actual_value = left.get(field), right.get(field)
+            if expected_value is None and actual_value is None:
+                continue
+            if expected_value is None or actual_value is None:
+                coefficient_differences.append(math.inf)
+            else:
+                coefficient_differences.append(abs(float(expected_value) - float(actual_value)))
+
+    expected_corr = expected.get("residual_correlation") or {}
+    actual_corr = actual.get("residual_correlation") or {}
+    expected_tickers = expected_corr.get("tickers") or []
+    actual_tickers = actual_corr.get("tickers") or []
+    correlation_differences: list[float] = []
+    if expected_tickers == actual_tickers:
+        for expected_row, actual_row in zip(expected_corr.get("matrix") or [], actual_corr.get("matrix") or []):
+            for expected_value, actual_value in zip(expected_row, actual_row):
+                correlation_differences.append(abs(float(expected_value) - float(actual_value)))
+    else:
+        correlation_differences.append(math.inf)
+
+    coefficient_tolerance = float(regression.get("coefficient_abs_tolerance", 1e-10))
+    correlation_tolerance = float(regression.get("correlation_abs_tolerance", 1e-10))
+    allowed_assignments = int(regression.get("allowed_assignment_mismatches", 0))
+    allowed_statuses = int(regression.get("allowed_status_mismatches", 0))
+    max_coefficient = max(coefficient_differences, default=0.0)
+    max_correlation = max(correlation_differences, default=0.0)
+    passed = not missing and not extra
+    passed = passed and len(assignment_mismatches) <= allowed_assignments
+    passed = passed and len(status_mismatches) <= allowed_statuses
+    passed = passed and max_coefficient <= coefficient_tolerance
+    passed = passed and max_correlation <= correlation_tolerance
+    return {
+        "pipeline": "residual_risk_clusters",
+        "pass": passed,
+        "expected": str(expected_path),
+        "actual": str(actual_path),
+        "metrics": {
+            "expected_rows": len(expected_rows),
+            "actual_rows": len(actual_rows),
+            "common_rows": len(common),
+            "assignment_mismatch_count": len(assignment_mismatches),
+            "status_mismatch_count": len(status_mismatches),
+            "max_coefficient_abs_difference": max_coefficient,
+            "max_correlation_abs_difference": max_correlation,
+        },
+        "differences": {
+            "missing_tickers": missing,
+            "extra_tickers": extra,
+            "assignment_mismatch_tickers": assignment_mismatches,
+            "status_mismatch_tickers": status_mismatches,
+        },
+        "tolerances": {
+            "coefficient_abs_tolerance": coefficient_tolerance,
+            "correlation_abs_tolerance": correlation_tolerance,
+            "allowed_assignment_mismatches": allowed_assignments,
+            "allowed_status_mismatches": allowed_statuses,
+        },
+    }
+
+
 def verify_baseline(config: BaselineConfig, actual: Path | None = None) -> dict[str, Any]:
     expected = config.expected_output()
     actual_path = (actual or expected).expanduser().resolve()
@@ -286,9 +444,12 @@ def verify_baseline(config: BaselineConfig, actual: Path | None = None) -> dict[
     if config.pipeline == "bad_beta":
         qa = qa_bad_beta(actual_path)
         comparison = compare_bad_beta(expected, actual_path, regression)
-    else:
+    elif config.pipeline == "six_factor_ranking":
         qa = qa_six_factor(actual_path, config.data["model"]["weights"])
         comparison = compare_six_factor(expected, actual_path, regression)
+    else:
+        qa = qa_risk_clusters(actual_path)
+        comparison = compare_risk_clusters(expected, actual_path, regression)
     return {
         "baseline_version": config.version,
         "pipeline": config.pipeline,

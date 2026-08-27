@@ -13,6 +13,7 @@ from .validation import verify_baseline
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BAD_BETA_CONFIG = REPO_ROOT / "configs" / "bad_beta_v1.toml"
 DEFAULT_SIX_FACTOR_CONFIG = REPO_ROOT / "configs" / "six_factor_ranking_v1.toml"
+DEFAULT_RISK_CLUSTERS_CONFIG = REPO_ROOT / "configs" / "residual_risk_clusters_v1.toml"
 
 
 def _common_run_arguments(parser: argparse.ArgumentParser, default_config: Path) -> None:
@@ -75,6 +76,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Force a fresh Yahoo revision pull even when a revision fixture is supplied.",
     )
 
+    risk = subparsers.add_parser(
+        "risk-clusters",
+        help="Cluster stocks using correlations of market/sector-neutral residual returns.",
+    )
+    _common_run_arguments(risk, DEFAULT_RISK_CLUSTERS_CONFIG)
+    risk.add_argument("--universe", default=None)
+    risk.add_argument("--returns", default=None, help="Wide CSV of daily returns with a date column.")
+    risk.add_argument("--prices", default=None, help="Wide CSV of adjusted prices with a date column.")
+    risk.add_argument(
+        "--allow-external-ticker-lookup",
+        action="store_true",
+        help="Allow ticker symbols to be sent to Yahoo for adjusted-price history.",
+    )
+    risk.add_argument("--sector-map", default=None)
+    risk.add_argument(
+        "--fetch-sector-metadata",
+        action="store_true",
+        help="Allow missing ticker sectors to be resolved through Nasdaq.",
+    )
+    risk.add_argument("--weights-column", default=None)
+    risk.add_argument("--market", default=None)
+    risk.add_argument("--style-factors", default=None, help="Comma-separated ETF tickers.")
+    risk.add_argument("--lookback-days", type=int, default=None)
+    risk.add_argument("--min-observations", type=int, default=None)
+    risk.add_argument("--min-pair-observations", type=int, default=None)
+    risk.add_argument("--residual-correlation-threshold", type=float, default=None)
+    risk.add_argument("--cluster-cap", type=float, default=None)
+    risk.add_argument(
+        "--frozen-baseline",
+        action="store_true",
+        help="Run the deterministic local universe and return fixtures for offline regression.",
+    )
+
     verify = subparsers.add_parser("verify", help="Validate or compare a baseline output without network access.")
     verify.add_argument("--config", required=True)
     verify.add_argument("--actual", default=None, help="Actual JSON or CSV to compare; defaults to the baseline snapshot.")
@@ -109,7 +143,12 @@ def main(argv: list[str] | None = None) -> int:
             print(json_text(report), end="")
             return 0 if report["pass"] else 1
 
-        expected_pipeline = "bad_beta" if args.command == "bad-beta" else "six_factor_ranking"
+        expected_pipeline = {
+            "bad-beta": "bad_beta",
+            "rank-six-factor": "six_factor_ranking",
+            "rank-fundamentals": "six_factor_ranking",
+            "risk-clusters": "residual_risk_clusters",
+        }[args.command]
         config = load_baseline(args.config, expected_pipeline)
         options = _run_options(args)
         if args.dry_run:

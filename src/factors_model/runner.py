@@ -16,7 +16,8 @@ from .baselines import (
     sha256_file,
 )
 from .excel_reports import write_bad_beta_report
-from .validation import qa_bad_beta, qa_six_factor, verify_baseline
+from .risk_cluster_report import write_risk_cluster_report
+from .validation import qa_bad_beta, qa_risk_clusters, qa_six_factor, verify_baseline
 
 
 class RunError(RuntimeError):
@@ -24,7 +25,7 @@ class RunError(RuntimeError):
 
 
 def _as_of(config: BaselineConfig, options: dict[str, Any]) -> str:
-    if config.pipeline == "six_factor_ranking" and options.get("frozen_baseline"):
+    if config.pipeline in {"six_factor_ranking", "residual_risk_clusters"} and options.get("frozen_baseline"):
         return str(config.data["fixtures"]["as_of"])
     return str(options.get("as_of") or config.data["model"]["as_of"])
 
@@ -66,7 +67,7 @@ def is_frozen_baseline_run(config: BaselineConfig, options: dict[str, Any]) -> b
             "window_months",
             "min_months",
         )
-    else:
+    elif config.pipeline == "six_factor_ranking":
         if not options.get("frozen_baseline"):
             return False
         material_overrides = (
@@ -78,6 +79,27 @@ def is_frozen_baseline_run(config: BaselineConfig, options: dict[str, Any]) -> b
             "factor_as_of",
             "revision_as_of",
             "refresh_revisions",
+        )
+    else:
+        if not options.get("frozen_baseline"):
+            return False
+        material_overrides = (
+            "project_root",
+            "universe",
+            "returns",
+            "prices",
+            "allow_external_ticker_lookup",
+            "fetch_sector_metadata",
+            "sector_map",
+            "weights_column",
+            "as_of",
+            "market",
+            "style_factors",
+            "lookback_days",
+            "min_observations",
+            "min_pair_observations",
+            "residual_correlation_threshold",
+            "cluster_cap",
         )
     return not any(options.get(key) not in (None, False) for key in material_overrides)
 
@@ -134,11 +156,22 @@ def run_baseline(config: BaselineConfig, options: dict[str, Any]) -> dict[str, A
             manifest_path.write_text(json_text(manifest), encoding="utf-8")
             raise RunError(f"bad_beta completed but Excel report generation failed: {exc}") from exc
         qa = qa_bad_beta(primary_output)
-    else:
+    elif config.pipeline == "six_factor_ranking":
         primary_output = output_dir / "results.json"
         excel_report_path = None
         excel_report = None
         qa = qa_six_factor(primary_output, config.data["model"]["weights"])
+    else:
+        primary_output = output_dir / "results.json"
+        qa = qa_risk_clusters(primary_output)
+        excel_report_path = output_dir / "residual_risk_clusters.xlsx"
+        try:
+            excel_report = write_risk_cluster_report(primary_output, excel_report_path, qa)
+        except Exception as exc:
+            manifest["status"] = "failed_excel_report"
+            manifest["excel_report_error"] = repr(exc)
+            manifest_path.write_text(json_text(manifest), encoding="utf-8")
+            raise RunError(f"risk clusters completed but Excel report generation failed: {exc}") from exc
     qa_path = output_dir / "qa.json"
     qa_path.write_text(json_text(qa), encoding="utf-8")
     manifest["qa_pass"] = qa["pass"]

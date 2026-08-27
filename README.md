@@ -1,11 +1,12 @@
 # factors-model
 
-This repository provides versioned command-line baselines around the existing bad-beta and six-factor ranking models. It standardizes how a run is configured, invoked, recorded, checked, and compared without changing either investment methodology.
+This repository provides versioned command-line baselines around the existing bad-beta and six-factor ranking models, plus a residual-risk clustering pipeline. It standardizes how a run is configured, invoked, recorded, checked, and compared without changing the established ranking methodologies.
 
 ## Baselines
 
 - `configs/bad_beta_v1.toml`: VAR cash-flow-news bad beta, `rho=0.95`, 36-month stock window, 24-month minimum history, and a universe-relative 3x3 beta/bad-beta grid. The default public universe is the 2026-06-16 candidate set; no holdings, weights, sides, or portfolio sizing are used.
 - `configs/six_factor_ranking_v1.toml`: the established six-factor model—quality, fundamental momentum, analyst revisions, valuation, conservative investment, and shareholder yield. Its normal input is a ticker universe, not a pre-scored factor snapshot.
+- `configs/residual_risk_clusters_v1.toml`: trailing daily-return regressions against market and sector ETF factors, residual-correlation clustering, and optional cluster-cap diagnostics. The default model is market plus sector; style ETFs are opt-in.
 
 Both pipeline implementations and all frozen baseline inputs are owned by this repository:
 
@@ -25,7 +26,7 @@ From this repository, run once:
 ```
 
 This creates the ignored project-local `.venv` and installs the pinned NumPy,
-pandas, xlrd, and yfinance dependencies declared in `pyproject.toml`.
+pandas, SciPy, xlrd, and yfinance dependencies declared in `pyproject.toml`.
 
 ## Run the pipelines
 
@@ -35,6 +36,7 @@ After setup:
 ./bin/factors --help
 ./bin/factors bad-beta --dry-run
 ./bin/factors rank-six-factor --dry-run
+./bin/factors risk-clusters --frozen-baseline --dry-run
 ```
 
 The equivalent project-local Python form is:
@@ -97,11 +99,57 @@ The bad-beta baseline runs on a generic public ticker universe. It defaults to t
 
 Use `--universe /path/to/tickers.csv` or `--universe /path/to/candidate-directory` to select another research universe. The input needs a `ticker` or `Ticker` column. The shared default is under `data/universes/2026-06-16`. Use `--dry-run` to inspect the exact command without contacting external services.
 
+## Run residual-risk clusters
+
+The private-safe path uses a local wide return or adjusted-price panel. The first
+column must be `date`; remaining columns are stock and ETF tickers:
+
+```bash
+./bin/factors risk-clusters \
+  --universe "/path/to/portfolio.csv" \
+  --returns "/path/to/daily_returns.csv" \
+  --as-of 2026-08-26 \
+  --cluster-cap 0.15
+```
+
+The universe requires `ticker` or `symbol`. Optional columns are `sector`,
+`portfolio_weight`, and `side`. Weights are decimal NAV weights; a positive
+weight with `side=short` is converted to a negative signed weight. Gross cluster
+weight is the sum of absolute position weights; net cluster weight preserves
+signs. Missing sectors remain eligible under visibly labeled market-only
+neutralization.
+
+External price lookup is explicit because it sends ticker symbols to Yahoo:
+
+```bash
+./bin/factors risk-clusters \
+  --universe "/path/to/public_universe.csv" \
+  --allow-external-ticker-lookup
+```
+
+Add `--fetch-sector-metadata` only when missing sectors may be sent to Nasdaq.
+Optional style ETFs are comma separated, for example
+`--style-factors VLUE,MTUM,USMV,SPHQ`. Sector and style ETF returns are
+residualized against the configured market factor before each stock regression.
+The default market is `VTI`, the trailing window is 504 trading days, and the
+minimum stock history is 252 observations.
+
+Use the deterministic local fixtures for an offline smoke test:
+
+```bash
+./bin/factors risk-clusters --frozen-baseline
+```
+
+This pipeline is a historical shared-risk screen. It is not an expected-return
+model, an automatic rebalance, or a substitute for liquidity, event-gap, borrow,
+and thesis risk review.
+
 ## Verify frozen baselines offline
 
 ```bash
 ./bin/factors verify --config configs/bad_beta_v1.toml
 ./bin/factors verify --config configs/six_factor_ranking_v1.toml
+./bin/factors verify --config configs/residual_risk_clusters_v1.toml
 ```
 
 Compare a new output with its frozen baseline:
@@ -137,6 +185,7 @@ Successful runs write into `runs/<as-of>/<pipeline>/` by default:
 - `results.json` for both models.
 - `bad_beta_analysis.xlsx` for bad-beta runs, containing only `ticker`, `beta`, `bad_beta`, and `grid_cell`.
 - `rankings.csv`, `five_factor_inputs.json`, and `analyst_revisions.json` for live six-factor ranking.
+- `residual_risk_clusters.xlsx`, `cluster_assignments.csv`, `cluster_summary.csv`, `factor_loadings.csv`, and `residual_correlation.csv` for residual-risk clustering.
 
 An existing non-empty run directory is not overwritten unless `--force` is supplied.
 

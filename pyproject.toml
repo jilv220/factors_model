@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "factors-model"
 version = "0.1.0"
-description = "Versioned command-line baselines for bad-beta and six-factor equity-ranking pipelines."
+description = "Versioned command-line baselines for factor ranking and residual equity-risk pipelines."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "numpy==2.5.2",
   "pandas==3.0.5",
+  "scipy==1.18.1",
   "xlrd==2.0.2",
   "XlsxWriter==3.2.9",
   "yfinance==1.5.2",

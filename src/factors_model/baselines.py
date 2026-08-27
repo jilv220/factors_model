@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-PIPELINES = {"bad_beta", "six_factor_ranking"}
+PIPELINES = {"bad_beta", "six_factor_ranking", "residual_risk_clusters"}
 
 
 class ConfigError(ValueError):
@@ -116,7 +116,7 @@ def validate_baseline(config: BaselineConfig) -> None:
         universe = config.project_path(str(inputs["universe"]), project_root)
         if not universe.exists():
             raise ConfigError(f"universe input not found: {universe}")
-    else:
+    elif config.pipeline == "six_factor_ranking":
         if not inputs.get("universe"):
             raise ConfigError(f"{config.path}: inputs.universe is required")
         universe = config.project_path(str(inputs["universe"]), project_root)
@@ -154,6 +154,47 @@ def validate_baseline(config: BaselineConfig) -> None:
             raise ConfigError(f"{config.path}: model weights must be non-negative")
         if abs(sum(float(value) for value in weights.values()) - 1.0) > 1e-9:
             raise ConfigError(f"{config.path}: model weights must sum to 1.0")
+    else:
+        if not inputs.get("universe"):
+            raise ConfigError(f"{config.path}: inputs.universe is required")
+        universe = config.project_path(str(inputs["universe"]), project_root)
+        if not universe.exists():
+            raise ConfigError(f"risk-cluster universe not found: {universe}")
+        for key in (
+            "as_of",
+            "method_id",
+            "market",
+            "lookback_days",
+            "min_observations",
+            "min_pair_observations",
+            "residual_correlation_threshold",
+        ):
+            if key not in model or model[key] in (None, ""):
+                raise ConfigError(f"{config.path}: model.{key} is required")
+        if str(model["method_id"]) != "residual_risk_clusters_v1":
+            raise ConfigError(f"{config.path}: unsupported risk-cluster method_id {model['method_id']!r}")
+        if int(model["lookback_days"]) < int(model["min_observations"]):
+            raise ConfigError("model.lookback_days cannot be less than model.min_observations")
+        if int(model["min_pair_observations"]) > int(model["min_observations"]):
+            raise ConfigError("model.min_pair_observations cannot exceed model.min_observations")
+        threshold = float(model["residual_correlation_threshold"])
+        if not -1.0 < threshold < 1.0:
+            raise ConfigError("model.residual_correlation_threshold must be between -1 and 1")
+        cap = model.get("cluster_cap")
+        if cap is not None and float(cap) <= 0:
+            raise ConfigError("model.cluster_cap must be positive when configured")
+        styles = model.get("style_factors", [])
+        if not isinstance(styles, list):
+            raise ConfigError("model.style_factors must be an array")
+        fixtures = config.data.get("fixtures")
+        if fixtures is not None:
+            for key in ("universe", "returns", "as_of"):
+                if not fixtures.get(key):
+                    raise ConfigError(f"{config.path}: fixtures.{key} is required")
+            for key in ("universe", "returns"):
+                path = config.project_path(str(fixtures[key]), project_root)
+                if not path.is_file():
+                    raise ConfigError(f"risk-cluster fixture not found: {path}")
 
 
 def resolve_cli_path(value: str | None, fallback: Path) -> Path:
@@ -202,6 +243,101 @@ def build_command(config: BaselineConfig, options: dict[str, Any], output_dir: P
         ]
         return command
 
+    if config.pipeline == "residual_risk_clusters":
+        inputs = config.data["inputs"]
+        fixtures = config.data.get("fixtures", {})
+        model = config.data["model"]
+        frozen = bool(options.get("frozen_baseline"))
+        if frozen and not fixtures:
+            raise ConfigError(
+                f"{config.path}: [fixtures] is required when using --frozen-baseline"
+            )
+        if frozen:
+            forbidden = (
+                "universe",
+                "returns",
+                "prices",
+                "allow_external_ticker_lookup",
+                "fetch_sector_metadata",
+                "sector_map",
+                "weights_column",
+                "as_of",
+                "market",
+                "style_factors",
+                "lookback_days",
+                "min_observations",
+                "min_pair_observations",
+                "residual_correlation_threshold",
+                "cluster_cap",
+            )
+            if any(options.get(key) not in (None, False) for key in forbidden):
+                raise ConfigError(
+                    "--frozen-baseline cannot be combined with data, date, model, or cap overrides"
+                )
+            universe = config.project_path(str(fixtures["universe"]), project_root)
+            returns = config.project_path(str(fixtures["returns"]), project_root)
+            run_as_of = str(fixtures["as_of"])
+        else:
+            universe = resolve_cli_path(
+                options.get("universe"), config.project_path(str(inputs["universe"]), project_root)
+            )
+            returns = resolve_cli_path(str(options["returns"]), Path()) if options.get("returns") else None
+            prices = resolve_cli_path(str(options["prices"]), Path()) if options.get("prices") else None
+            if sum(bool(value) for value in (returns, prices, options.get("allow_external_ticker_lookup"))) != 1:
+                raise ConfigError(
+                    "risk-clusters requires exactly one of --returns, --prices, or --allow-external-ticker-lookup"
+                )
+            run_as_of = str(options.get("as_of") or model["as_of"])
+        styles = options.get("style_factors")
+        if styles is None:
+            styles = ",".join(str(value).upper() for value in model.get("style_factors", []))
+        elif isinstance(styles, (list, tuple)):
+            styles = ",".join(str(value).upper() for value in styles)
+        command = [
+            str(python),
+            str(script),
+            "--universe",
+            str(universe),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            run_as_of,
+            "--market",
+            str(options.get("market") or model["market"]),
+            "--style-factors",
+            str(styles),
+            "--lookback-days",
+            str(options.get("lookback_days") or model["lookback_days"]),
+            "--min-observations",
+            str(options.get("min_observations") or model["min_observations"]),
+            "--min-pair-observations",
+            str(options.get("min_pair_observations") or model["min_pair_observations"]),
+            "--residual-correlation-threshold",
+            str(
+                options.get("residual_correlation_threshold")
+                if options.get("residual_correlation_threshold") is not None
+                else model["residual_correlation_threshold"]
+            ),
+        ]
+        if frozen:
+            command.extend(["--returns", str(returns)])
+        elif returns is not None:
+            command.extend(["--returns", str(returns)])
+        elif prices is not None:
+            command.extend(["--prices", str(prices)])
+        else:
+            command.append("--fetch-prices")
+        cap = options.get("cluster_cap") if options.get("cluster_cap") is not None else model.get("cluster_cap")
+        if cap is not None:
+            command.extend(["--cluster-cap", str(cap)])
+        if not frozen and options.get("sector_map"):
+            command.extend(["--sector-map", str(resolve_cli_path(str(options["sector_map"]), Path()))])
+        if not frozen and options.get("weights_column"):
+            command.extend(["--weights-column", str(options["weights_column"])])
+        if not frozen and options.get("fetch_sector_metadata"):
+            command.append("--fetch-sector-metadata")
+        return command
+
     inputs = config.data["inputs"]
     fixtures = config.data.get("fixtures", {})
     model = config.data["model"]
@@ -229,7 +365,7 @@ def build_command(config: BaselineConfig, options: dict[str, Any], output_dir: P
         run_as_of = str(fixtures["as_of"])
         factor_as_of = str(fixtures["factor_as_of"])
         revision_as_of = str(fixtures["revision_as_of"])
-    else:
+    elif config.pipeline == "six_factor_ranking":
         run_as_of = str(options.get("as_of") or model["as_of"])
         factor_as_of = str(
             options.get("factor_as_of")
@@ -322,7 +458,7 @@ def fingerprint_inputs(config: BaselineConfig, options: dict[str, Any]) -> list[
                 candidate = config.project_path(str(inputs[role]), project_root)
                 if candidate.is_file():
                     paths.append((role, candidate))
-    else:
+    elif config.pipeline == "six_factor_ranking":
         if options.get("frozen_baseline"):
             fixtures = config.data.get("fixtures", {})
             if not fixtures:
@@ -350,6 +486,28 @@ def fingerprint_inputs(config: BaselineConfig, options: dict[str, Any]) -> list[
                 paths = [("universe", universe)]
         if not options.get("frozen_baseline") and options.get("revisions"):
             paths.append(("analyst_revisions", resolve_cli_path(str(options["revisions"]), Path())))
+    else:
+        if options.get("frozen_baseline"):
+            fixtures = config.data.get("fixtures", {})
+            if not fixtures:
+                raise ConfigError(
+                    f"{config.path}: [fixtures] is required when using --frozen-baseline"
+                )
+            paths = [
+                ("universe_fixture", config.project_path(str(fixtures["universe"]), project_root)),
+                ("returns_fixture", config.project_path(str(fixtures["returns"]), project_root)),
+            ]
+        else:
+            universe = resolve_cli_path(
+                options.get("universe"), config.project_path(str(inputs["universe"]), project_root)
+            )
+            paths = [("universe", universe)]
+            if options.get("returns"):
+                paths.append(("returns", resolve_cli_path(str(options["returns"]), Path())))
+            if options.get("prices"):
+                paths.append(("prices", resolve_cli_path(str(options["prices"]), Path())))
+            if options.get("sector_map"):
+                paths.append(("sector_map", resolve_cli_path(str(options["sector_map"]), Path())))
     return [
         {"role": role, "path": str(path), "bytes": path.stat().st_size, "sha256": sha256_file(path)}
         for role, path in paths

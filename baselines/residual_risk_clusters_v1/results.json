@@ -1,0 +1,441 @@
+{
+  "as_of": "2026-08-26",
+  "cluster_summary": [
+    {
+      "breach": false,
+      "cluster_cap": 0.15,
+      "cluster_id": "C01",
+      "excess_gross": 0.0,
+      "gross_weight": 0.15000000000000002,
+      "max_multiplier": 1.0,
+      "member_count": 2,
+      "members": "AAA, AAB",
+      "net_weight": 0.15000000000000002,
+      "weight_complete": true
+    },
+    {
+      "breach": true,
+      "cluster_cap": 0.15,
+      "cluster_id": "C02",
+      "excess_gross": 0.01999999999999999,
+      "gross_weight": 0.16999999999999998,
+      "max_multiplier": 0.8823529411764707,
+      "member_count": 2,
+      "members": "BBA, BBB",
+      "net_weight": 0.16999999999999998,
+      "weight_complete": true
+    },
+    {
+      "breach": false,
+      "cluster_cap": 0.15,
+      "cluster_id": "C03",
+      "excess_gross": 0.0,
+      "gross_weight": 0.06,
+      "max_multiplier": 1.0,
+      "member_count": 1,
+      "members": "CCA",
+      "net_weight": 0.06,
+      "weight_complete": true
+    },
+    {
+      "breach": false,
+      "cluster_cap": 0.15,
+      "cluster_id": "C04",
+      "excess_gross": 0.0,
+      "gross_weight": 0.04,
+      "max_multiplier": 1.0,
+      "member_count": 1,
+      "members": "DDD",
+      "net_weight": -0.04,
+      "weight_complete": true
+    }
+  ],
+  "coverage": {
+    "eligible_rows": 6,
+    "excluded_rows": 0,
+    "extreme_return_count": 0,
+    "future_date_count": 0,
+    "market_only_rows": 1,
+    "return_end": "2026-08-26",
+    "return_start": "2025-06-05",
+    "universe_rows": 6,
+    "weighted_rows": 6
+  },
+  "data_source": {
+    "mode": "local_returns",
+    "path": "/Users/sashimi/Coding/factors_model/data/residual_risk/frozen_returns_v1.csv"
+  },
+  "diagnostics": {
+    "missing_pair_correlations_filled_with_zero": 0,
+    "nearest_correlation_adjustment_frobenius": 1.2408451680618852e-15,
+    "raw_mean_pairwise_correlation": 0.5002086141778085,
+    "residual_mean_pairwise_correlation": 0.14879015043204422
+  },
+  "factor_loadings": [
+    {
+      "coefficient": 0.9728101880470645,
+      "factor": "VTI",
+      "ticker": "AAA"
+    },
+    {
+      "coefficient": 0.8220276039418957,
+      "factor": "XLK",
+      "ticker": "AAA"
+    },
+    {
+      "coefficient": 1.1238715227898604,
+      "factor": "VTI",
+      "ticker": "AAB"
+    },
+    {
+      "coefficient": 0.6756955831267312,
+      "factor": "XLK",
+      "ticker": "AAB"
+    },
+    {
+      "coefficient": 0.7524329932750574,
+      "factor": "VTI",
+      "ticker": "BBA"
+    },
+    {
+      "coefficient": 0.9885330436241886,
+      "factor": "XLE",
+      "ticker": "BBA"
+    },
+    {
+      "coefficient": 0.8754625868541409,
+      "factor": "VTI",
+      "ticker": "BBB"
+    },
+    {
+      "coefficient": 0.9036829634125166,
+      "factor": "XLE",
+      "ticker": "BBB"
+    },
+    {
+      "coefficient": 0.738570090650607,
+      "factor": "VTI",
+      "ticker": "CCA"
+    },
+    {
+      "coefficient": 0.7840443927191848,
+      "factor": "XLV",
+      "ticker": "CCA"
+    },
+    {
+      "coefficient": 1.2756924363847335,
+      "factor": "VTI",
+      "ticker": "DDD"
+    }
+  ],
+  "model": {
+    "cluster_cap": 0.15,
+    "cluster_method": "average-linkage hierarchical clustering",
+    "distance_method": "sqrt((1-correlation)/2)",
+    "lookback_days": 504,
+    "market": "VTI",
+    "min_observations": 252,
+    "min_pair_observations": 126,
+    "residual_correlation_threshold": 0.35,
+    "sector_factor_method": "sector ETF residualized against market",
+    "style_factor_method": "style ETF residualized against market",
+    "style_factors": []
+  },
+  "model_id": "residual_risk_clusters_v1",
+  "residual_correlation": {
+    "matrix": [
+      [
+        1.0,
+        0.9836539175765632,
+        0.020576010442047935,
+        0.017802446632908756,
+        0.01574292324656485,
+        -0.012742348841865926
+      ],
+      [
+        0.9836539175765632,
+        1.0,
+        0.020298831899358733,
+        0.01801718670580346,
+        0.015633286550277316,
+        -0.011089167018241227
+      ],
+      [
+        0.020576010442047935,
+        0.020298831899358733,
+        1.0,
+        0.9757380052565178,
+        -0.013888495602357453,
+        0.12159307191008377
+      ],
+      [
+        0.017802446632908756,
+        0.01801718670580346,
+        0.9757380052565178,
+        1.0,
+        -0.014324083444288142,
+        0.12452438964427154
+      ],
+      [
+        0.01574292324656485,
+        0.015633286550277316,
+        -0.013888495602357453,
+        -0.014324083444288142,
+        1.0,
+        -0.029683718476981064
+      ],
+      [
+        -0.012742348841865926,
+        -0.011089167018241227,
+        0.12159307191008377,
+        0.12452438964427154,
+        -0.029683718476981064,
+        1.0
+      ]
+    ],
+    "overlap_matrix": [
+      [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ]
+    ],
+    "raw_pairwise_matrix": [
+      [
+        1.0,
+        0.9836539175765627,
+        0.02057601044204816,
+        0.01780244663290911,
+        0.015742923246564754,
+        -0.012742348841865805
+      ],
+      [
+        0.9836539175765627,
+        1.0,
+        0.020298831899358837,
+        0.0180171867058037,
+        0.0156332865502772,
+        -0.011089167018241097
+      ],
+      [
+        0.02057601044204816,
+        0.020298831899358837,
+        1.0,
+        0.9757380052565175,
+        -0.01388849560235743,
+        0.12159307191008353
+      ],
+      [
+        0.01780244663290911,
+        0.0180171867058037,
+        0.9757380052565175,
+        1.0,
+        -0.014324083444288153,
+        0.12452438964427145
+      ],
+      [
+        0.015742923246564754,
+        0.0156332865502772,
+        -0.01388849560235743,
+        -0.014324083444288153,
+        1.0,
+        -0.029683718476981463
+      ],
+      [
+        -0.012742348841865805,
+        -0.011089167018241097,
+        0.12159307191008353,
+        0.12452438964427145,
+        -0.029683718476981463,
+        1.0
+      ]
+    ],
+    "tickers": [
+      "AAA",
+      "AAB",
+      "BBA",
+      "BBB",
+      "CCA",
+      "DDD"
+    ]
+  },
+  "rows": [
+    {
+      "alpha_daily": 6.253665274214054e-05,
+      "beta_market": 0.9728101880470645,
+      "beta_sector": 0.8220276039418957,
+      "cluster_id": "C01",
+      "cluster_multiplier": 1.0,
+      "cluster_size": 2,
+      "condition_number": 227.82709977117528,
+      "issue_name": "Alpha Applications",
+      "observations": 320,
+      "portfolio_weight": 0.08,
+      "r_squared": 0.5062416919858335,
+      "residual_volatility": 0.10535044636730861,
+      "sector": "Technology",
+      "sector_etf": "XLK",
+      "side": "long",
+      "status": "OK",
+      "stock_volatility": 0.1499267655955382,
+      "suggested_weight": 0.08,
+      "ticker": "AAA",
+      "warnings": []
+    },
+    {
+      "alpha_daily": 5.068204789559323e-05,
+      "beta_market": 1.1238715227898604,
+      "beta_sector": 0.6756955831267312,
+      "cluster_id": "C01",
+      "cluster_multiplier": 1.0,
+      "cluster_size": 2,
+      "condition_number": 227.82709977117528,
+      "issue_name": "Alpha Devices",
+      "observations": 320,
+      "portfolio_weight": 0.07,
+      "r_squared": 0.5823128269110804,
+      "residual_volatility": 0.09663519981743317,
+      "sector": "Technology",
+      "sector_etf": "XLK",
+      "side": "long",
+      "status": "OK",
+      "stock_volatility": 0.14952361203300957,
+      "suggested_weight": 0.07,
+      "ticker": "AAB",
+      "warnings": []
+    },
+    {
+      "alpha_daily": -5.2778253596740004e-05,
+      "beta_market": 0.7524329932750574,
+      "beta_sector": 0.9885330436241886,
+      "cluster_id": "C02",
+      "cluster_multiplier": 0.8823529411764707,
+      "cluster_size": 2,
+      "condition_number": 198.12898884551257,
+      "issue_name": "Basin Resources",
+      "observations": 320,
+      "portfolio_weight": 0.09,
+      "r_squared": 0.5457546539621394,
+      "residual_volatility": 0.09625570738861526,
+      "sector": "Energy",
+      "sector_etf": "XLE",
+      "side": "long",
+      "status": "OK",
+      "stock_volatility": 0.1428174408885081,
+      "suggested_weight": 0.07941176470588236,
+      "ticker": "BBA",
+      "warnings": []
+    },
+    {
+      "alpha_daily": -4.9791587259449055e-05,
+      "beta_market": 0.8754625868541409,
+      "beta_sector": 0.9036829634125166,
+      "cluster_id": "C02",
+      "cluster_multiplier": 0.8823529411764707,
+      "cluster_size": 2,
+      "condition_number": 198.12898884551257,
+      "issue_name": "Barrel Energy",
+      "observations": 320,
+      "portfolio_weight": 0.08,
+      "r_squared": 0.6266426945060325,
+      "residual_volatility": 0.08388183761006528,
+      "sector": "Energy",
+      "sector_etf": "XLE",
+      "side": "long",
+      "status": "OK",
+      "stock_volatility": 0.13727947487754563,
+      "suggested_weight": 0.07058823529411766,
+      "ticker": "BBB",
+      "warnings": []
+    },
+    {
+      "alpha_daily": 7.596988535066693e-05,
+      "beta_market": 0.738570090650607,
+      "beta_sector": 0.7840443927191848,
+      "cluster_id": "C03",
+      "cluster_multiplier": 1.0,
+      "cluster_size": 1,
+      "condition_number": 263.9272048477964,
+      "issue_name": "Care Health",
+      "observations": 320,
+      "portfolio_weight": 0.06,
+      "r_squared": 0.5551432234776406,
+      "residual_volatility": 0.07432119466345952,
+      "sector": "Health Care",
+      "sector_etf": "XLV",
+      "side": "long",
+      "status": "OK",
+      "stock_volatility": 0.11143011449134332,
+      "suggested_weight": 0.06,
+      "ticker": "CCA",
+      "warnings": []
+    },
+    {
+      "alpha_daily": -0.00012099056744100014,
+      "beta_market": 1.2756924363847335,
+      "beta_sector": null,
+      "cluster_id": "C04",
+      "cluster_multiplier": 1.0,
+      "cluster_size": 1,
+      "condition_number": 171.97991354456823,
+      "issue_name": "Delta Special Situations",
+      "observations": 320,
+      "portfolio_weight": -0.04,
+      "r_squared": 0.6952579512047619,
+      "residual_volatility": 0.07808028980251232,
+      "sector": null,
+      "sector_etf": null,
+      "side": "short",
+      "status": "OK_MARKET_ONLY",
+      "stock_volatility": 0.14144096968118758,
+      "suggested_weight": -0.04,
+      "ticker": "DDD",
+      "warnings": [
+        "sector unavailable; market-only neutralization used"
+      ]
+    }
+  ]
+}

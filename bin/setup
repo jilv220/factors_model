@@ -10,4 +10,4 @@ if [ ! -x "$project_python" ]; then
 fi
 
 "$project_python" -m pip install -e "$repo_root"
-"$project_python" -c 'import numpy, pandas, yfinance; print("factors runtime ready")'
+"$project_python" -c 'import numpy, pandas, scipy, yfinance; print("factors runtime ready")'

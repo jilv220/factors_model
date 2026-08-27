@@ -66,7 +66,11 @@ expected_output = "baselines/six_factor_ranking_v1/results.json"
         return config_path
 
     def test_configs_resolve_code_inputs_and_baselines_inside_repository(self) -> None:
-        for name in ("bad_beta_v1.toml", "six_factor_ranking_v1.toml"):
+        for name in (
+            "bad_beta_v1.toml",
+            "six_factor_ranking_v1.toml",
+            "residual_risk_clusters_v1.toml",
+        ):
             config = load_baseline(REPO_ROOT / "configs" / name)
             self.assertEqual(config.project_root(), REPO_ROOT)
             self.assertTrue(config.script_path().is_relative_to(REPO_ROOT))

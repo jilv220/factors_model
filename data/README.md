@@ -28,3 +28,11 @@ must treat dated files as immutable; create a new dated snapshot when needed.
   the independent ranking/formula reference.
 
 Regression expectations live separately under `baselines/`.
+
+## Residual-risk clusters
+
+- `residual_risk/frozen_universe_v1.csv`: six-stock public synthetic universe with
+  sector labels, long/short direction, and decimal NAV weights.
+- `residual_risk/frozen_returns_v1.csv`: deterministic daily return panel with
+  market, sector, style, and stock returns. It contains two known residual-risk
+  pairs plus two singletons and is used only for offline regression and tests.

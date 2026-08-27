@@ -1,0 +1,27 @@
+baseline_version = "residual_risk_clusters_v2"
+pipeline = "residual_risk_clusters"
+project_root = ".."
+python = ".venv/bin/python"
+script = "../scripts/cluster_residual_risk.py"
+output_root = "../runs"
+
+[inputs]
+universe = "data/universes/2026-08-26/lbb_stocks_620.csv"
+
+[model]
+as_of = "2026-08-26"
+method_id = "residual_risk_clusters_v1"
+market = "VTI"
+lookback_days = 504
+min_observations = 252
+min_pair_observations = 126
+residual_correlation_threshold = 0.35
+cluster_cap = 0.15
+style_factors = ["LGLV"]
+
+[regression]
+expected_output = "baselines/residual_risk_clusters_v1/results.json"
+coefficient_abs_tolerance = 1e-10
+correlation_abs_tolerance = 1e-10
+allowed_assignment_mismatches = 0
+allowed_status_mismatches = 0
