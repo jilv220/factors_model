@@ -12,7 +12,7 @@ from .validation import verify_baseline
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BAD_BETA_CONFIG = REPO_ROOT / "configs" / "bad_beta_v1.toml"
-DEFAULT_SIX_FACTOR_CONFIG = REPO_ROOT / "configs" / "six_factor_ranking_v1.toml"
+DEFAULT_SIX_FACTOR_CONFIG = REPO_ROOT / "configs" / "six_factor_ranking_v3.toml"
 DEFAULT_RISK_CLUSTERS_CONFIG = REPO_ROOT / "configs" / "residual_risk_clusters_v1.toml"
 
 

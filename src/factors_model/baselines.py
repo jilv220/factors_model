@@ -125,6 +125,12 @@ def validate_baseline(config: BaselineConfig) -> None:
         for key in ("as_of", "factor_as_of", "method_id"):
             if not model.get(key):
                 raise ConfigError(f"{config.path}: model.{key} is required")
+        quality_method = model.get("quality_method", "sphq_quality_v1")
+        if quality_method not in ("sphq_quality_v1", "profitability_quality_v2"):
+            raise ConfigError(f"{config.path}: unsupported quality_method {quality_method!r}")
+        expected_method_id = "low_beta_low_bad_beta_six_factor_v2" if quality_method == "profitability_quality_v2" else "low_beta_low_bad_beta_six_factor_v1"
+        if model["method_id"] != expected_method_id:
+            raise ConfigError(f"{config.path}: method_id and quality_method disagree")
         fixtures = config.data.get("fixtures")
         if fixtures is not None:
             for key in ("factor_input", "analyst_revisions", "reference_workbook"):
@@ -402,6 +408,8 @@ def build_command(config: BaselineConfig, options: dict[str, Any], output_dir: P
         run_as_of,
         "--factor-as-of",
         factor_as_of,
+        "--quality-method",
+        "sphq_quality_v1" if frozen else str(model.get("quality_method", "sphq_quality_v1")),
         "--sleep",
         str(options.get("sleep") if options.get("sleep") is not None else execution.get("sleep", 0.12)),
         "--workers",

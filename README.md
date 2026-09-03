@@ -5,7 +5,7 @@ This repository provides versioned command-line baselines around the existing ba
 ## Baselines
 
 - `configs/bad_beta_v1.toml`: VAR cash-flow-news bad beta, `rho=0.95`, 36-month stock window, 24-month minimum history, and a universe-relative 3x3 beta/bad-beta grid. The default public universe is the 2026-06-16 candidate set; no holdings, weights, sides, or portfolio sizing are used.
-- `configs/six_factor_ranking_v1.toml`: the established six-factor model—quality, fundamental momentum, analyst revisions, valuation, conservative investment, and shareholder yield. Its normal input is a ticker universe, not a pre-scored factor snapshot.
+- `configs/six_factor_ranking_v3.toml` (default): the six-factor model with profitability-led quality v2, bounded accrual penalties, and audited debt coverage. Fundamental momentum, analyst revisions, valuation, conservative investment, and shareholder yield retain their definitions. The v1/v2 configs retain the legacy quality formula; frozen fixtures reproduce the original rankings.
 - `configs/residual_risk_clusters_v1.toml`: trailing daily-return regressions against market and sector ETF factors, residual-correlation clustering, and optional cluster-cap diagnostics. The default model is market plus sector; style ETFs are opt-in.
 
 Both pipeline implementations and all frozen baseline inputs are owned by this repository:
@@ -86,6 +86,14 @@ The weighting contract is:
 - Valuation: 11.11%
 - Conservative investment: 11.11%
 - Shareholder yield: 11.11%
+
+Within quality, v2 uses 75% profitability and 25% safety, with a maximum 0.9-point
+deduction for positive earnings-minus-operating-cash-flow accruals. Negative
+accruals earn no bonus. Matched annual inputs, missing-data flags and separate
+financial-company treatment are documented in [Quality v2](docs/quality_methodology.md)
+and its [research review](docs/quality_research_notes.md). `rankings.csv` includes
+quality status, coverage, fiscal period, and component diagnostics. Scores are
+direct bounded composites, so they no longer mean final cohort percentiles.
 
 Missing factor values are handled by renormalizing these weights across the available scores. Outputs contain model and source fields only—no portfolio quantities, sides, or position weights.
 

@@ -1,0 +1,45 @@
+baseline_version = "six_factor_ranking_v3"
+pipeline = "six_factor_ranking"
+project_root = ".."
+python = ".venv/bin/python"
+script = "../scripts/rank_six_factor_model.py"
+output_root = "../runs"
+
+[inputs]
+universe = "data/universes/2026-08-26/lbb_stocks.csv"
+
+# Historical fixture mode continues to reproduce the original formula exactly.
+[fixtures]
+factor_input = "data/six_factor/five_factor_snapshot_2026-07-10.json"
+analyst_revisions = "data/six_factor/analyst_revisions_2026-08-09.json"
+reference_workbook = "data/six_factor/reference_rankings_2026-08-09.xlsx"
+as_of = "2026-08-09"
+factor_as_of = "2026-07-10"
+revision_as_of = "2026-08-09"
+
+[model]
+as_of = "2026-09-03"
+factor_as_of = "2026-09-03"
+method_id = "low_beta_low_bad_beta_six_factor_v2"
+quality_method = "profitability_quality_v2"
+
+[model.weights]
+quality = 0.25
+fundamental_momentum = 0.25
+analyst_revisions = 0.16666666666666666
+valuation = 0.1111111111111111
+conservative_investment = 0.1111111111111111
+shareholder_yield = 0.1111111111111111
+
+[execution]
+refresh_revisions = true
+sleep = 0.10
+workers = 4
+sec_user_agent = "factors-model public-equity research research-contact@example.com"
+
+[regression]
+expected_output = "baselines/six_factor_ranking_v1/results.json"
+score_abs_tolerance = 0.000000000001
+factor_score_abs_tolerance = 0.000000000001
+allowed_rank_mismatches = 0
+allowed_factor_mismatches = 0

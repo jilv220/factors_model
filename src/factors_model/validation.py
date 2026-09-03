@@ -122,7 +122,10 @@ def qa_six_factor(path: Path, configured_weights: dict[str, Any]) -> dict[str, A
         else:
             formula_differences.append(abs(expected_score - float(row["overall_score"])))
     checks = {
-        "model_id_matches": payload.get("model_id") == "low_beta_low_bad_beta_six_factor_v1",
+        "model_id_matches": payload.get("model_id") == (
+            "low_beta_low_bad_beta_six_factor_v2" if payload.get("quality_version") == "profitability_quality_v2"
+            else "low_beta_low_bad_beta_six_factor_v1"
+        ),
         "factor_names_match": tuple(payload.get("factor_names") or ()) == SIX_FACTOR_NAMES,
         "weights_match_config": set(actual_weights) == set(expected_weights)
         and all(abs(float(actual_weights[key]) - value) <= 1e-12 for key, value in expected_weights.items()),
@@ -143,6 +146,28 @@ def qa_six_factor(path: Path, configured_weights: dict[str, Any]) -> dict[str, A
         and coverage.get("valid_revision_rows")
         == sum(row.get("analyst_revisions_score") is not None for row in rows)
     )
+    checks["quality_version_supported"] = payload.get("quality_version") in (None, "sphq_quality_v1", "profitability_quality_v2")
+    if payload.get("quality_version") == "profitability_quality_v2":
+        checks["quality_diagnostics_valid"] = all(
+            row.get("quality_version") == "profitability_quality_v2"
+            and row.get("quality_status") in ("OK", "Partial", "Insufficient")
+            and _finite(row.get("quality_coverage")) and 0 <= row["quality_coverage"] <= 1
+            and _finite(row.get("quality_accrual_penalty_points")) and 0 <= row["quality_accrual_penalty_points"] <= 0.9 + 1e-12
+            and isinstance(row.get("quality_flags"), list)
+            for row in rows
+        )
+        checks["quality_missing_safety_disclosed"] = all(
+            row.get("quality_safety") is not None or row.get("quality_status") != "OK" for row in rows
+        )
+        checks["quality_scores_match_bounded_formula"] = all(
+            (row.get("quality_score") is None and row.get("quality_status") == "Insufficient")
+            or (_finite(row.get("quality_score")) and _finite(row.get("quality_profitability"))
+                and _finite(row.get("quality_accrual_penalty_points"))
+                and abs(row["quality_score"] - (1 + 9 * max(0, min(1,
+                    0.75 * row["quality_profitability"] + 0.25 * (row["quality_safety"] if row.get("quality_safety") is not None else 0.5)
+                    - row["quality_accrual_penalty_points"] / 9)))) <= 1e-12)
+            for row in rows
+        )
     return {
         "pipeline": "six_factor_ranking",
         "pass": all(checks.values()),

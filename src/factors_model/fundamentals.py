@@ -1,8 +1,8 @@
 """Collect the established five fundamental factors for an arbitrary ticker universe.
 
-The methodology is the same cohort-relative model used by the frozen five-factor
-snapshot: SPHQ-style quality, SUE/CAR3 fundamental momentum, valuation,
-conservative investment, and shareholder yield.  SEC filings provide reported
+Live runs default to profitability-led quality v2; the legacy quality formula is
+explicitly selectable. SUE/CAR3 fundamental momentum, valuation, conservative
+investment and shareholder yield retain their definitions. SEC filings provide reported
 fundamentals; Yahoo provides adjusted prices; Nasdaq is used as the preferred
 market-cap and sector source when available.
 """
@@ -21,6 +21,10 @@ from typing import Any, Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+from .debt import debt_series
+from .quality import (QUALITY_VERSION, LEGACY_QUALITY_VERSION, QUALITY_DESCRIPTION,
+                      annual_quality_inputs, score_quality)
 
 
 DEFAULT_USER_AGENT = "factors-model public-equity research research-contact@example.com"
@@ -426,19 +430,7 @@ def value_on_date(
 
 
 def combine_debt(payload: dict[str, Any], annual_only: bool) -> list[dict[str, Any]]:
-    total = {item["end"]: item for item in instant_series(payload, DEBT_TOTAL, annual_only=annual_only)}
-    current = {item["end"]: item for item in instant_series(payload, DEBT_CURRENT, annual_only=annual_only)}
-    noncurrent = {item["end"]: item for item in instant_series(payload, DEBT_NONCURRENT, annual_only=annual_only)}
-    output: list[dict[str, Any]] = []
-    for end in sorted(set(total) | set(current) | set(noncurrent)):
-        if end in total:
-            output.append(total[end])
-            continue
-        parts = [item for item in (current.get(end), noncurrent.get(end)) if item is not None]
-        if parts:
-            base = max(parts, key=lambda item: item["filed"])
-            output.append({**base, "value": sum(item["value"] for item in parts), "concept": "+".join(item["concept"] for item in parts)})
-    return dedupe_by_end(output)
+    return debt_series(payload, as_of=AS_OF, annual_only=annual_only)
 
 
 def latest_annual_value(
@@ -495,11 +487,11 @@ def earnings_date(submissions: dict[str, Any], eps_quarters: list[dict[str, Any]
     return None, "unavailable"
 
 
-def sec_metrics(ticker: str, cik: int) -> dict[str, Any]:
+def sec_metrics(ticker: str, cik: int, *, user_agent: str = DEFAULT_USER_AGENT) -> dict[str, Any]:
     companyfacts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
     submissions_url = f"https://data.sec.gov/submissions/CIK{cik:010d}.json"
-    company = fetch_json(companyfacts_url)
-    submissions = fetch_json(submissions_url)
+    company = fetch_json(companyfacts_url, user_agent)
+    submissions = fetch_json(submissions_url, user_agent)
     revenue_q = quarter_series(company, REVENUE)
     income_q = quarter_series(company, NET_INCOME)
     cfo_q = quarter_series(company, CFO)
@@ -539,8 +531,8 @@ def sec_metrics(ticker: str, cik: int) -> dict[str, Any]:
     cash_p = aligned(cash_a, prior_end)
     debt = aligned(debt_a, annual_end)
     debt_p = aligned(debt_a, prior_end)
-    noa = assets + (debt or 0.0) - (cash or 0.0) - liabilities if assets is not None and liabilities is not None else None
-    noa_p = assets_p + (debt_p or 0.0) - (cash_p or 0.0) - liabilities_p if assets_p is not None and liabilities_p is not None else None
+    noa = assets + debt - cash - liabilities if all(v is not None for v in (assets, debt, cash, liabilities)) else None
+    noa_p = assets_p + debt_p - cash_p - liabilities_p if all(v is not None for v in (assets_p, debt_p, cash_p, liabilities_p)) else None
     average_assets = (assets + assets_p) / 2 if assets is not None and assets_p is not None else None
 
     weighted = annual_duration_series(company, WEIGHTED_SHARES, ("shares",))
@@ -584,9 +576,11 @@ def sec_metrics(ticker: str, cik: int) -> dict[str, Any]:
         "cash": cash,
         "debt": debt,
         "debt_prior": debt_p,
+        "debt_source": value_on_date(debt_a, annual_end),
+        "debt_prior_source": value_on_date(debt_a, prior_end),
         "roe": ratio(net_income_ttm, equity),
         "balance_sheet_accruals": None if exclude_bsa else ratio(noa - noa_p, average_assets) if noa is not None and noa_p is not None else None,
-        "financial_leverage": ratio(debt or 0.0, equity),
+        "financial_leverage": ratio(debt, equity),
         "asset_growth": assets / assets_p - 1 if assets is not None and assets_p not in (None, 0) else None,
         "capex_to_avg_assets": ratio(capex_ttm, average_assets),
         "sue": sue["sue"],
@@ -603,6 +597,7 @@ def sec_metrics(ticker: str, cik: int) -> dict[str, Any]:
         "annual_issuance_cash": issuance["value"] if issuance else 0.0,
         "repurchase_cash_available": repurchases is not None,
         "issuance_cash_available": issuance is not None,
+        **annual_quality_inputs(company, AS_OF, exclude_bsa),
     }
 
 
@@ -739,7 +734,7 @@ def add_ranks(rows: list[dict[str, Any]], key: str, rank_key: str) -> None:
         row.setdefault(rank_key, None)
 
 
-def score_rows(rows: list[dict[str, Any]]) -> None:
+def _score_rows_legacy(rows: list[dict[str, Any]]) -> None:
     for row in rows:
         row["roe_invalid"] = row.get("equity") is not None and row.get("net_income_ttm") is not None and (row["equity"] <= 0 or row["net_income_ttm"] < 0)
         row["leverage_invalid"] = row.get("equity") is not None and row["equity"] <= 0
@@ -810,12 +805,30 @@ def score_rows(rows: list[dict[str, Any]]) -> None:
         add_ranks(rows, key, rank_key)
 
 
+def score_rows(rows: list[dict[str, Any]], quality_method: str = QUALITY_VERSION) -> None:
+    if quality_method not in (QUALITY_VERSION, LEGACY_QUALITY_VERSION):
+        raise ValueError(f"Unknown quality method: {quality_method}")
+    _score_rows_legacy(rows)
+    if quality_method == LEGACY_QUALITY_VERSION:
+        for row in rows:
+            row["quality_version"] = LEGACY_QUALITY_VERSION
+    if quality_method == QUALITY_VERSION:
+        score_quality(rows)
+        for row in rows:
+            scores = [row.get(f"{name}_score") for name in
+                      ("quality", "fundamental_momentum", "valuation", "conservative_investment", "shareholder_yield")]
+            row["factor_coverage"] = sum(value is not None for value in scores)
+            row["overall_score"] = avg_present(scores)
+        add_ranks(rows, "overall_score", "overall_rank")
+
+
 def collect_five_factors(
     universe_path: Path,
     as_of: date,
     *,
     user_agent: str = DEFAULT_USER_AGENT,
     max_workers: int = 4,
+    quality_method: str = QUALITY_VERSION,
 ) -> dict[str, Any]:
     global AS_OF, PRICE_START
     AS_OF = as_of
@@ -838,7 +851,7 @@ def collect_five_factors(
         if cik is None:
             return ticker, None, "No SEC ticker-map match"
         try:
-            return ticker, sec_metrics(ticker, cik), None
+            return ticker, sec_metrics(ticker, cik, user_agent=user_agent), None
         except Exception as exc:
             return ticker, None, repr(exc)
 
@@ -883,9 +896,9 @@ def collect_five_factors(
         market_cap = nasdaq_market_cap or calculated_market_cap
         market_cap_source = "Nasdaq screener" if nasdaq_market_cap is not None else "Yahoo price x SEC shares" if calculated_market_cap is not None else None
         debt, cash = sec.get("debt"), sec.get("cash")
-        enterprise_value = market_cap + (debt or 0.0) - (cash or 0.0) if market_cap is not None else None
+        enterprise_value = market_cap + debt - cash if all(v is not None for v in (market_cap, debt, cash)) else None
         dividend_yield = ratio(sec.get("annual_dividends"), market_cap)
-        debt_paydown_yield = ratio((sec.get("debt_prior") or 0.0) - (debt or 0.0), market_cap) if market_cap is not None and sec.get("debt_prior") is not None and not sec.get("exclude_bsa") else None
+        debt_paydown_yield = ratio(sec["debt_prior"] - debt, market_cap) if market_cap is not None and debt is not None and sec.get("debt_prior") is not None and not sec.get("exclude_bsa") else None
         cash_buyback_available = bool(sec.get("repurchase_cash_available") or sec.get("issuance_cash_available"))
         cash_buyback_yield = ratio((sec.get("annual_repurchase_cash") or 0.0) - (sec.get("annual_issuance_cash") or 0.0), market_cap) if cash_buyback_available else None
         buyback_yield = cash_buyback_yield if cash_buyback_yield is not None else sec.get("repurchase_yield_proxy")
@@ -923,7 +936,7 @@ def collect_five_factors(
         }
         rows.append(row)
 
-    score_rows(rows)
+    score_rows(rows, quality_method)
     rows.sort(key=lambda row: (-(row.get("overall_score") or -999), row["ticker"]))
     coverage = {
         "universe": len(rows),
@@ -940,12 +953,13 @@ def collect_five_factors(
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "as_of": AS_OF.isoformat(),
+        "quality_version": quality_method,
         "universe_source": str(universe_path.expanduser().resolve()),
         "universe_rule": "All unique ticker or symbol values in the selected universe input.",
         "coverage": coverage,
         "errors": errors,
         "methodology": {
-            "quality": "SPHQ-style: average z of ROE, inverted balance-sheet accruals and inverted leverage; BSA excluded for financial/real-estate SICs; final 1-10 cohort percentile.",
+            "quality": QUALITY_DESCRIPTION if quality_method == QUALITY_VERSION else "Legacy SPHQ-style approximation: average z of ROE, inverted balance-sheet accruals and inverted leverage; BSA excluded for financial/real-estate SICs; final 1-10 cohort percentile.",
             "fundamental_momentum": "Equal average of SUE and CAR3 cohort percentiles when both exist; available-component fallback flagged; score = 1 + 9*pct.",
             "valuation": "Equal average of earnings yield, FCF yield, book-to-price and sales-to-EV cohort percentiles; financial/real-estate names use earnings yield and book-to-price only.",
             "conservative_investment": "Equal average of inverted asset-growth and inverted capex-to-average-assets cohort percentiles; financial/real-estate names use asset growth only.",

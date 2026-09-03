@@ -1,0 +1,27 @@
+baseline_version = "bad_beta_v3"
+pipeline = "bad_beta"
+project_root = ".."
+python = ".venv/bin/python"
+script = "../scripts/estimate_bad_beta.py"
+output_root = "../runs"
+
+[inputs]
+universe = "data/universes/2026-08-28/holdings-xlk.csv"
+cape_csv = "data/bad_beta/shiller_cape.csv"
+cape_xls = "data/bad_beta/shiller_cape.xls"
+
+[model]
+start = "2016-01-01"
+as_of = "2026-08-28"
+universe_as_of = "2026-08-28"
+rho = 0.95
+window_months = 36
+min_months = 24
+
+[regression]
+expected_output = "baselines/bad_beta_v3/results.json"
+# Yahoo can revise adjusted-close history by a few millionths between requests.
+# Keep the numeric allowance narrow while requiring an identical universe and grid.
+beta_abs_tolerance = 0.00001
+bad_beta_abs_tolerance = 0.00001
+allowed_grid_mismatches = 0

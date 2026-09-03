@@ -67,6 +67,15 @@ CSV_FIELDS = (
     "latest_annual",
     "data_status",
     "revision_source_url",
+    "quality_version",
+    "quality_status",
+    "quality_coverage",
+    "quality_flags",
+    "quality_annual_end",
+    "quality_profitability",
+    "quality_safety",
+    "quality_accrual_penalty_points",
+    "quality_peer_group",
 )
 
 
@@ -98,6 +107,7 @@ def parse_args() -> argparse.Namespace:
         help="SEC-compliant user agent including a contact address.",
     )
     parser.add_argument("--weight-quality", type=float, default=DEFAULT_WEIGHTS["quality_score"])
+    parser.add_argument("--quality-method", choices=["sphq_quality_v1", "profitability_quality_v2"], default=None)
     parser.add_argument(
         "--weight-fundamental-momentum",
         type=float,
@@ -323,6 +333,11 @@ def score_model(
             "latest_annual": base.get("latest_annual_end"),
             "data_status": base.get("data_status"),
         }
+        for key in ("quality_version", "quality_status", "quality_coverage", "quality_flags",
+                    "quality_annual_end", "quality_profitability", "quality_safety",
+                    "quality_accrual_penalty_points", "quality_peer_group"):
+            if key in base and (key == "quality_version" or base.get("quality_version") == "profitability_quality_v2"):
+                row[key] = base[key]
         available = [(row[field], weights[field]) for field in FACTOR_FIELDS if row[field] is not None]
         denominator = sum(weight for _, weight in available)
         row["factor_coverage"] = len(available)
@@ -341,7 +356,8 @@ def score_model(
 
     factor_methodology = factor_payload.get("methodology") or {}
     return {
-        "model_id": "low_beta_low_bad_beta_six_factor_v1",
+        "model_id": "low_beta_low_bad_beta_six_factor_v2" if factor_payload.get("quality_version") == "profitability_quality_v2" else "low_beta_low_bad_beta_six_factor_v1",
+        **({"quality_version": factor_payload["quality_version"]} if factor_payload.get("quality_version") else {}),
         "as_of": as_of,
         "factor_data_as_of": factor_payload.get("as_of"),
         "revision_data_as_of": str(revision_payload.get("retrieved_at_utc") or "")[:10],
@@ -410,11 +426,15 @@ def main() -> int:
             date.fromisoformat(args.factor_as_of),
             user_agent=args.sec_user_agent,
             max_workers=args.workers,
+            quality_method=args.quality_method or "profitability_quality_v2",
         )
         write_five_factor_snapshot(factor_path, factor_payload)
     else:
         factor_path = Path(args.factor_input).expanduser().resolve()
         factor_payload = load_json(factor_path)
+        actual_method = factor_payload.get("quality_version", "sphq_quality_v1")
+        if args.quality_method and args.quality_method != actual_method:
+            raise ValueError("The scored input uses a different quality method; rebuild its quality inputs before ranking")
     if str(factor_payload.get("as_of")) != args.factor_as_of:
         raise ValueError(
             f"factor input is dated {factor_payload.get('as_of')!r}, expected {args.factor_as_of!r}"
