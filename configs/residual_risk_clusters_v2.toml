@@ -6,10 +6,10 @@ script = "../scripts/cluster_residual_risk.py"
 output_root = "../runs"
 
 [inputs]
-universe = "data/universes/2026-08-26/lbb_stocks_620.csv"
+universe = "data/universes/2026-09-03/lbb_stocks.csv"
 
 [model]
-as_of = "2026-08-26"
+as_of = "2026-09-03"
 method_id = "residual_risk_clusters_v1"
 market = "VTI"
 lookback_days = 504

@@ -6,16 +6,7 @@ script = "../scripts/rank_six_factor_model.py"
 output_root = "../runs"
 
 [inputs]
-universe = "data/universes/2026-08-26/lbb_stocks.csv"
-
-# Historical fixture mode continues to reproduce the original formula exactly.
-[fixtures]
-factor_input = "data/six_factor/five_factor_snapshot_2026-07-10.json"
-analyst_revisions = "data/six_factor/analyst_revisions_2026-08-09.json"
-reference_workbook = "data/six_factor/reference_rankings_2026-08-09.xlsx"
-as_of = "2026-08-09"
-factor_as_of = "2026-07-10"
-revision_as_of = "2026-08-09"
+universe = "data/universes/2026-09-03/lbb_stocks.csv"
 
 [model]
 as_of = "2026-09-03"
