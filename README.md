@@ -202,3 +202,7 @@ An existing non-empty run directory is not overwritten unless `--force` is suppl
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
+
+## Non-quality input safeguards
+
+New live snapshots use `nonquality_v2` safeguards for SEC quarter reconstruction, matched cash-flow periods, missing payout legs, eligible peer distributions, and missing revision observations. Quality formulas and factor weights are unchanged. See the [audit and remaining limitations](docs/nonquality_scoring_audit.md). Stored historical runs are not automatically refreshed.

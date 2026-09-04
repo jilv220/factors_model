@@ -43,6 +43,10 @@ CSV_FIELDS = (
     "company",
     "overall_score",
     "factor_coverage",
+    "valuation_coverage",
+    "shareholder_yield_coverage",
+    "shareholder_yield_status",
+    "conservative_investment_flags",
     "quality_score",
     "quality_rank",
     "fundamental_momentum_score",
@@ -301,13 +305,22 @@ def score_model(
     # The verified workbook calculates PERCENTRANK.INC across all cohort rows.
     # Its blank raw-revision cells occupy zero in that distribution, while those
     # rows still receive no revision score and renormalize the overall weights.
+    audited = factor_payload.get("scoring_version") == "nonquality_v2"
     revision_distribution = [finite(revisions[ticker].get("revision_pct_30d")) or 0.0 for ticker in factors]
+    if audited:
+        revision_distribution = [value for ticker in factors
+                                 if (value := finite(revisions[ticker].get("revision_pct_30d"))) is not None]
     rows: list[dict[str, Any]] = []
     for ticker, base in factors.items():
+        for field in FACTOR_FIELDS:
+            value = finite(base.get(field))
+            if value is not None and not 1 <= value <= 10:
+                raise ValueError(f"{ticker}: {field} outside 1-10: {value}")
         revision = revisions[ticker]
         revision_pct = finite(revision.get("revision_pct_30d"))
         revision_percentile = (
-            excel_percent_rank_inc(revision_distribution, revision_pct) if revision_pct is not None else None
+            (0.5 if audited and len(set(revision_distribution)) == 1 else
+             excel_percent_rank_inc(revision_distribution, revision_pct)) if revision_pct is not None else None
         )
         revision_score = 1.0 + 9.0 * revision_percentile if revision_percentile is not None else None
         row = {
@@ -333,6 +346,9 @@ def score_model(
             "latest_annual": base.get("latest_annual_end"),
             "data_status": base.get("data_status"),
         }
+        for key in ("valuation_coverage", "shareholder_yield_coverage", "shareholder_yield_status", "conservative_investment_flags"):
+            if key in base:
+                row[key] = base[key]
         for key in ("quality_version", "quality_status", "quality_coverage", "quality_flags",
                     "quality_annual_end", "quality_profitability", "quality_safety",
                     "quality_accrual_penalty_points", "quality_peer_group"):
@@ -358,6 +374,7 @@ def score_model(
     return {
         "model_id": "low_beta_low_bad_beta_six_factor_v2" if factor_payload.get("quality_version") == "profitability_quality_v2" else "low_beta_low_bad_beta_six_factor_v1",
         **({"quality_version": factor_payload["quality_version"]} if factor_payload.get("quality_version") else {}),
+        "scoring_version": factor_payload.get("scoring_version", "legacy"),
         "as_of": as_of,
         "factor_data_as_of": factor_payload.get("as_of"),
         "revision_data_as_of": str(revision_payload.get("retrieved_at_utc") or "")[:10],
@@ -378,6 +395,7 @@ def score_model(
             "analyst_revisions": (
                 "Current-quarter EPS consensus change versus 30 days earlier; reference-workbook "
                 "PERCENTRANK.INC with three-decimal significance maps to a 1-10 score."
+                + (" Missing observations excluded; constant/singleton cohorts neutral." if audited else " Legacy blank-as-zero peer distribution.")
             ),
             "valuation": factor_methodology.get("valuation"),
             "conservative_investment": factor_methodology.get("conservative_investment"),

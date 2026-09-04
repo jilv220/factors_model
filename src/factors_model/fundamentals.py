@@ -36,6 +36,7 @@ PRICE_START = AS_OF - timedelta(days=920)
 
 REVENUE = [
     ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
+    ("us-gaap", "RevenueFromContractWithCustomerIncludingAssessedTax"),
     ("us-gaap", "Revenues"),
     ("us-gaap", "SalesRevenueNet"),
     ("ifrs-full", "Revenue"),
@@ -134,9 +135,10 @@ def finite(value: Any) -> float | None:
 
 
 def ratio(numerator: float | None, denominator: float | None) -> float | None:
+    numerator, denominator = finite(numerator), finite(denominator)
     if numerator is None or denominator in (None, 0):
         return None
-    return numerator / denominator
+    return finite(numerator / denominator)
 
 
 def yahoo_symbol(ticker: str) -> str:
@@ -300,7 +302,7 @@ def facts_for(
             }
             key = (start, end, item.get("fy"), item.get("fp"), form)
             old = chosen.get(key)
-            if old is None or (priority, filed) < (old["priority"], old["filed"]):
+            if old is None or priority < old["priority"]:
                 chosen[key] = record
             elif priority == old["priority"] and filed > old["filed"]:
                 chosen[key] = record
@@ -359,36 +361,37 @@ def quarter_series(
     payload: dict[str, Any], concepts: list[tuple[str, str]], units: tuple[str, ...] = ("USD",)
 ) -> list[dict[str, Any]]:
     items = duration_items(payload, concepts, units)
-    by_fy: dict[int, list[dict[str, Any]]] = {}
-    for item in items:
-        if isinstance(item.get("fy"), int):
-            by_fy.setdefault(item["fy"], []).append(item)
-    output: list[dict[str, Any]] = []
-    for group in by_fy.values():
-        def pick(fp: str, low: int, high: int) -> dict[str, Any] | None:
-            return choose_latest(item for item in group if item.get("fp") == fp and low <= item["days"] <= high)
+    # SEC fy/fp describe the filing, including comparative facts, not the
+    # observation's fiscal quarter. Reconstruct only matching cumulative spans.
+    output = [{**item, "derived": False} for item in items if 70 <= item["days"] <= 110]
+    for total in items:
+        if not 140 <= total["days"] <= 380:
+            continue
+        bases = [item for item in items
+                 if item["start"] == total["start"]
+                 and item["concept"] == total["concept"]
+                 and item["taxonomy"] == total["taxonomy"]
+                 and 70 <= (date.fromisoformat(total["end"]) - date.fromisoformat(item["end"])).days <= 110]
+        if not bases:
+            continue
+        base = max(bases, key=lambda item: (item["filed"], -item["priority"]))
+        start = (date.fromisoformat(base["end"]) + timedelta(days=1)).isoformat()
+        output.append({**total, "start": start, "days": days_between(start, total["end"]),
+                       "value": total["value"] - base["value"], "derived": True})
+    # Prefer a directly reported quarter to a subtraction at the same endpoint.
+    derived = dedupe_by_end(item for item in output if item["derived"])
+    direct = dedupe_by_end(item for item in output if not item["derived"])
+    return sorted({item["end"]: item for item in derived + direct}.values(), key=lambda item: item["end"])
 
-        q1, q2, q3, q4 = (pick("Q1", 50, 140), pick("Q2", 50, 140), pick("Q3", 50, 140), pick("Q4", 50, 140))
-        y2, y3, year = pick("Q2", 140, 235), pick("Q3", 220, 335), pick("FY", 300, 460)
-        if q1:
-            output.append({**q1, "quarter": "Q1", "derived": False})
-        if q2:
-            output.append({**q2, "quarter": "Q2", "derived": False})
-        elif y2 and q1:
-            output.append({**y2, "value": y2["value"] - q1["value"], "quarter": "Q2", "derived": True})
-        if q3:
-            output.append({**q3, "quarter": "Q3", "derived": False})
-        elif y3:
-            base = y2["value"] if y2 else (q1["value"] + (q2["value"] if q2 else 0.0) if q1 else None)
-            if base is not None:
-                output.append({**y3, "value": y3["value"] - base, "quarter": "Q3", "derived": True})
-        if q4:
-            output.append({**q4, "quarter": "Q4", "derived": False})
-        elif year:
-            base = y3["value"] if y3 else (q1["value"] + q2["value"] + q3["value"] if q1 and q2 and q3 else None)
-            if base is not None:
-                output.append({**year, "value": year["value"] - base, "quarter": "Q4", "derived": True})
-    return dedupe_by_end(output)
+
+def contiguous_quarters(quarters: list[dict[str, Any]]) -> bool:
+    for left, right in zip(quarters, quarters[1:]):
+        gap = days_between(left["end"], right["end"])
+        if gap is None or not 70 <= gap <= 110:
+            return False
+        if right.get("start") and days_between(left["end"], right["start"]) not in (0, 1):
+            return False
+    return True
 
 
 def ttm_value(quarters: list[dict[str, Any]]) -> float | None:
@@ -396,7 +399,7 @@ def ttm_value(quarters: list[dict[str, Any]]) -> float | None:
         return None
     latest = quarters[-4:]
     span = (date.fromisoformat(latest[-1]["end"]) - date.fromisoformat(latest[0]["end"])).days
-    return sum(item["value"] for item in latest) if 240 <= span <= 430 else None
+    return sum(item["value"] for item in latest) if 240 <= span <= 330 and contiguous_quarters(latest) else None
 
 
 def latest_and_prior(
@@ -441,6 +444,10 @@ def latest_annual_value(
 
 
 def sue_from_eps(quarters: list[dict[str, Any]]) -> dict[str, Any]:
+    # Positional year-over-year differences require an uninterrupted history.
+    quarters = list(quarters)
+    while len(quarters) > 1 and not contiguous_quarters(quarters):
+        quarters.pop(0)
     values = [item["value"] for item in quarters]
     innovations = [values[index] - values[index - 4] for index in range(4, len(values))]
     recent = innovations[-8:]
@@ -498,16 +505,22 @@ def sec_metrics(ticker: str, cik: int, *, user_agent: str = DEFAULT_USER_AGENT) 
     capex_q = quarter_series(company, CAPEX)
     eps_q = quarter_series(company, EPS, ("USD/shares", "USD / shares"))
 
+    flow_periods: dict[str, tuple[str | None, str] | None] = {}
+
     def ttm_or_annual(quarters: list[dict[str, Any]], concepts: list[tuple[str, str]]) -> float | None:
         value = ttm_value(quarters)
         annual = latest_annual_value(company, concepts)
+        period = (quarters[-4].get("start"), quarters[-1]["end"]) if value is not None else (annual["start"], annual["end"]) if annual else None
+        if period and days_between(period[1], AS_OF.isoformat()) > 550:
+            value, annual, period = None, None, None
+        flow_periods[concepts[0][1]] = period
         return value if value is not None else annual["value"] if annual else None
 
     revenue_ttm = ttm_or_annual(revenue_q, REVENUE)
     net_income_ttm = ttm_or_annual(income_q, NET_INCOME)
     cfo_ttm = ttm_or_annual(cfo_q, CFO)
     capex_ttm = ttm_or_annual(capex_q, CAPEX)
-    fcf_ttm = cfo_ttm - capex_ttm if cfo_ttm is not None and capex_ttm is not None else None
+    fcf_ttm = cfo_ttm - capex_ttm if cfo_ttm is not None and capex_ttm is not None and flow_periods[CFO[0][1]] == flow_periods[CAPEX[0][1]] else None
 
     assets_a = instant_series(company, ASSETS, annual_only=True)
     liabilities_a = instant_series(company, LIABILITIES, annual_only=True)
@@ -546,6 +559,12 @@ def sec_metrics(ticker: str, cik: int, *, user_agent: str = DEFAULT_USER_AGENT) 
     dividends = latest_annual_value(company, DIVIDENDS)
     repurchases = latest_annual_value(company, REPURCHASES)
     issuance = latest_annual_value(company, ISSUANCE)
+    # Do not combine payout cash flows from different fiscal years or stale tags.
+    for name, item in (("dividends", dividends), ("repurchases", repurchases), ("issuance", issuance)):
+        if item and (item["end"] != annual_end or days_between(item["end"], AS_OF.isoformat()) > 550):
+            if name == "dividends": dividends = None
+            elif name == "repurchases": repurchases = None
+            else: issuance = None
     sue = sue_from_eps(eps_q)
     event_date, event_source = earnings_date(submissions, eps_q)
     try:
@@ -569,6 +588,7 @@ def sec_metrics(ticker: str, cik: int, *, user_agent: str = DEFAULT_USER_AGENT) 
         "cfo_ttm": cfo_ttm,
         "capex_ttm": capex_ttm,
         "fcf_ttm": fcf_ttm,
+        "flow_periods": flow_periods,
         "assets": assets,
         "assets_prior": assets_p,
         "liabilities": liabilities,
@@ -592,9 +612,9 @@ def sec_metrics(ticker: str, cik: int, *, user_agent: str = DEFAULT_USER_AGENT) 
         "shares_outstanding": shares[-1]["value"] if shares else None,
         "weighted_share_change": share_change,
         "repurchase_yield_proxy": -share_change if share_change is not None else None,
-        "annual_dividends": dividends["value"] if dividends else 0.0,
-        "annual_repurchase_cash": repurchases["value"] if repurchases else 0.0,
-        "annual_issuance_cash": issuance["value"] if issuance else 0.0,
+        "annual_dividends": dividends["value"] if dividends else None,
+        "annual_repurchase_cash": repurchases["value"] if repurchases else None,
+        "annual_issuance_cash": issuance["value"] if issuance else None,
         "repurchase_cash_available": repurchases is not None,
         "issuance_cash_available": issuance is not None,
         **annual_quality_inputs(company, AS_OF, exclude_bsa),
@@ -639,6 +659,8 @@ def car3(
     if not eligible:
         return {"car3": None, "mapped_event_date": None, "window": []}
     mapped = eligible[0]
+    if days_between(event_date, mapped) > 4:
+        return {"car3": None, "mapped_event_date": mapped, "window": []}
     index = common.index(mapped)
     if index < 1 or index + 1 >= len(common):
         return {"car3": None, "mapped_event_date": mapped, "window": []}
@@ -762,9 +784,13 @@ def _score_rows_legacy(rows: list[dict[str, Any]]) -> None:
             else "Insufficient"
         )
     valuation_keys = ["earnings_yield", "fcf_yield", "book_to_price", "sales_to_ev"]
-    valuation = {key: percentile_map(rows, key) for key in valuation_keys}
+    valuation = {key: percentile_map(
+        [{**row, key: None} if row.get("exclude_bsa") and key in {"fcf_yield", "sales_to_ev"} else row for row in rows], key)
+        for key in valuation_keys}
     asset_growth = percentile_map(rows, "asset_growth", False)
-    capex_intensity = percentile_map(rows, "capex_to_avg_assets", False)
+    capex_intensity = percentile_map(
+        [{**row, "capex_to_avg_assets": None} if row.get("exclude_bsa") else row for row in rows],
+        "capex_to_avg_assets", False)
     shareholder_yield = percentile_map(rows, "shareholder_yield")
     for row in rows:
         ticker = row["ticker"]
@@ -776,6 +802,8 @@ def _score_rows_legacy(rows: list[dict[str, Any]]) -> None:
         }
         row["valuation_percentile"] = avg_present(row["valuation_component_percentiles"].values())
         row["valuation_score"] = score10(row["valuation_percentile"])
+        row["valuation_coverage"] = sum(v is not None for v in row["valuation_component_percentiles"].values()) / (2 if row.get("exclude_bsa") else 4)
+        row["conservative_investment_flags"] = (["asset_contraction_may_include_write_downs_or_disposals"] if finite(row.get("asset_growth")) is not None and row["asset_growth"] < 0 else [])
         row["asset_growth_percentile"] = asset_growth[ticker]
         row["capex_intensity_percentile"] = capex_intensity[ticker]
         row["conservative_investment_percentile"] = avg_present([
@@ -893,13 +921,15 @@ def collect_five_factors(
         event = car3(price_map, market_prices, sec.get("earnings_announcement_date")) if price_map and market_prices else {"car3": None, "mapped_event_date": None, "window": []}
         calculated_market_cap = price * sec["shares_outstanding"] if price is not None and sec.get("shares_outstanding") is not None else None
         nasdaq_market_cap = finite(nasdaq_row.get("marketCap"))
+        nasdaq_market_cap = nasdaq_market_cap if nasdaq_market_cap is not None and nasdaq_market_cap > 0 else None
+        calculated_market_cap = calculated_market_cap if calculated_market_cap is not None and calculated_market_cap > 0 else None
         market_cap = nasdaq_market_cap or calculated_market_cap
         market_cap_source = "Nasdaq screener" if nasdaq_market_cap is not None else "Yahoo price x SEC shares" if calculated_market_cap is not None else None
         debt, cash = sec.get("debt"), sec.get("cash")
         enterprise_value = market_cap + debt - cash if all(v is not None for v in (market_cap, debt, cash)) else None
         dividend_yield = ratio(sec.get("annual_dividends"), market_cap)
         debt_paydown_yield = ratio(sec["debt_prior"] - debt, market_cap) if market_cap is not None and debt is not None and sec.get("debt_prior") is not None and not sec.get("exclude_bsa") else None
-        cash_buyback_available = bool(sec.get("repurchase_cash_available") or sec.get("issuance_cash_available"))
+        cash_buyback_available = bool(sec.get("repurchase_cash_available") and sec.get("issuance_cash_available"))
         cash_buyback_yield = ratio((sec.get("annual_repurchase_cash") or 0.0) - (sec.get("annual_issuance_cash") or 0.0), market_cap) if cash_buyback_available else None
         buyback_yield = cash_buyback_yield if cash_buyback_yield is not None else sec.get("repurchase_yield_proxy")
         shareholder_parts = [value for value in (dividend_yield, buyback_yield, debt_paydown_yield) if value is not None]
@@ -932,6 +962,8 @@ def collect_five_factors(
             "buyback_method": "cash repurchases less issuance" if cash_buyback_yield is not None else "inverse diluted-share growth proxy",
             "net_debt_paydown_yield": debt_paydown_yield,
             "shareholder_yield": sum(shareholder_parts) if shareholder_parts else None,
+            "shareholder_yield_coverage": len(shareholder_parts) / (2 if sec.get("exclude_bsa") else 3),
+            "shareholder_yield_status": "complete" if len(shareholder_parts) == (2 if sec.get("exclude_bsa") else 3) else "partial" if shareholder_parts else "missing",
             "data_status": "OK" if ticker in sec_by_ticker and price_map else "Partial",
         }
         rows.append(row)
@@ -954,6 +986,7 @@ def collect_five_factors(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "as_of": AS_OF.isoformat(),
         "quality_version": quality_method,
+        "scoring_version": "nonquality_v2",
         "universe_source": str(universe_path.expanduser().resolve()),
         "universe_rule": "All unique ticker or symbol values in the selected universe input.",
         "coverage": coverage,
